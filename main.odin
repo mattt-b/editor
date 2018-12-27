@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:log"
 import "core:os"
 
 import "shared:termbox"
@@ -17,6 +18,17 @@ main :: proc() {
         fmt.println("Error opening file:", os.args[1]);
         os.exit(1);
     }
+
+    logger_flags := os.O_WRONLY|os.O_CREATE;
+    logger_mode := os.S_IRUSR|os.S_IWUSR|os.S_IRGRP|os.S_IWGRP|os.S_IROTH;
+    logger_handle, log_err := os.open("editor.log", logger_flags, logger_mode);
+    if log_err != 0 {
+        fmt.println("Error creating logger");
+        os.exit(1);
+    }
+    context.logger = log.create_file_logger(logger_handle);
+    log.info("Editor start");
+
     buffer := buffer_init(fd);
 
     tb_error := tb.init();
@@ -39,5 +51,7 @@ main :: proc() {
         buffer_handle_event(buffer, event);
     }
 
+    os.close(fd);
+    os.close(logger_handle);
     tb.shutdown();
 }

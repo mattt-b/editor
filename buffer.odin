@@ -24,7 +24,7 @@ Buffer :: struct {
     width: int,
     height: int,
     mode: BufferMode,
-    text: Text,
+    text: ^Text,
     cursor: Cursor,
 }
 
@@ -33,19 +33,7 @@ buffer_init :: proc(fd: os.Handle) -> ^Buffer {
     buf.mode = BufferMode.Normal;
     buf.cursor.x = 0;
     buf.cursor.y = 0;
-    text_init(&buf.text, fd);
-
-    start := 0;
-    end: int;
-    for char, i in buf.text.original {
-        // TODO: \r\n
-        if char == '\n' {
-            end = i;
-            append(&buf.text.lines, buf.text.original[start:end]);
-            start = end+1;
-        }
-    }
-
+    buf.text = text_init(fd);
     return buf;
 }
 
@@ -98,14 +86,14 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
     case Direction.Up:
         cursor.y = max(0, cursor.y - 1);
 
-        line_len := len(text.lines[cursor.y]);
+        line_len := line_len(text, cursor.y);
         max_x := line_len == 0 ? 0 : line_len - 1;
         cursor.x = min(max_x, cursor.prev_x);
 
     case Direction.Down:
-        cursor.y = min(buffer.height - 1, len(text.lines)-1, cursor.y + 1);
+        cursor.y = min(buffer.height - 1, line_count(buffer.text)-1, cursor.y + 1);
 
-        line_len := len(text.lines[cursor.y]);
+        line_len := line_len(text, cursor.y);
         max_x := line_len == 0 ? 0 : line_len - 1;
         cursor.x = min(max_x, cursor.prev_x);
 
@@ -114,7 +102,7 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
         cursor.prev_x = cursor.x;
 
     case Direction.Right:
-        line_len := len(text.lines[cursor.y]);
+        line_len := line_len(text, cursor.y);
         if line_len == 0 {
             cursor.x = 0;
         } else {
@@ -127,18 +115,23 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
 render_buffer :: proc(buffer: ^Buffer) {
     y := 0;
     x := 0;
-    piece := buffer.text.pieces[0].content;
-    for i := 0; i < len(piece); i += 1{
-        if buffer.height == y do break;
-        if (buffer.width == x || piece[i] == '\n') {
-            // advance to next line
-            y += 1;
-            x = 0;
-            continue;
-        };
+    piece := buffer.text.pieces;
+    for piece != nil {
+        content := piece.content;
+        for i := 0; i < len(content); i += 1{
+            if buffer.height == y do break;
+            if (buffer.width == x || content[i] == '\n') {
+                // advance to next line
+                y += 1;
+                x = 0;
+                continue;
+            };
 
-        tb.change_cell(i32(x), i32(y), cast(u32)piece[i], tb.Color.DEFAULT, tb.Color.DEFAULT);
-        x += 1;
+            tb.change_cell(i32(x), i32(y), cast(u32)content[i], tb.Color.DEFAULT, tb.Color.DEFAULT);
+            x += 1;
+        }
+
+        piece = piece.next;
     }
 
     tb.set_cursor(cast(i32)buffer.cursor.x, cast(i32)buffer.cursor.y);
