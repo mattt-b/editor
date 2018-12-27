@@ -9,7 +9,7 @@ import "shared:termbox"
 
 main :: proc() {
     if len(os.args) != 2 {
-        fmt.print("Usage: ", os.args[0], "<file_to_open>\n");
+        fmt.print("Usage: ", os.args[0], " <file_to_open>\n");
         os.exit(1);
     }
 

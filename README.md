@@ -5,5 +5,5 @@ Dependencies:
 2. [odin-termbox](https://github.com/thebirk/odin-termbox) - Placed in `/path/to/Odin/binary/shared/termbox/termbox.odin`
     * [Termbox](https://github.com/nsf/termbox)
 
-Build: `odin build .`  
-Run: `$(binary-name) file_to_edit`
+Build: `make`  
+Run: `./editor file_to_edit`
