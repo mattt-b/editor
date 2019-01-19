@@ -1,8 +1,6 @@
 package main
 
 import "core:fmt"
-import "core:log"
-import "core:mem"
 import "core:os"
 
 import "util"
@@ -29,14 +27,13 @@ Text :: struct {
 }
 
 
-text_init :: proc(fd: os.Handle) -> ^Text {
+text_init :: proc(text: ^Text, fd: os.Handle) -> bool {
     file_data, err := util.mmap(fd);
     if err != 0 {
         fmt.println("Error reading file");
         os.exit(1);
     }
 
-    text := new(Text);
     text.original = file_data;
     text.pieces = new(Piece);
 
@@ -44,8 +41,7 @@ text_init :: proc(fd: os.Handle) -> ^Text {
     initial_piece.source = TextSource.Original;
     initial_piece.content = file_data[0:len(file_data)];
     text.pieces.next = initial_piece;
-
-    return text;
+    return true;
 }
 
 

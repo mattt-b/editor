@@ -1,6 +1,5 @@
 package util
 
-import "core:fmt"
 import "core:mem"
 import "core:os"
 
@@ -18,7 +17,6 @@ foreign libc {
                                            offset: int) -> rawptr ---;
     memchr :: proc(s: rawptr, c: u8, n: int) -> rawptr ---;
 }
-
 
 mmap :: proc(fd: os.Handle) -> ([]u8, os.Errno) {
     i64file_size, err := os.file_size(fd);

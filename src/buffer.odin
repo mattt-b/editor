@@ -2,7 +2,7 @@ package main
 
 import "core:os"
 
-import "shared:termbox"
+import tb "shared:termbox"
 
 
 BufferMode :: enum u8 {
@@ -28,13 +28,16 @@ Buffer :: struct {
     cursor: Cursor,
 }
 
-buffer_init :: proc(fd: os.Handle) -> ^Buffer {
-    buf := new(Buffer);
+buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool {
     buf.mode = BufferMode.Normal;
     buf.cursor.x = 0;
     buf.cursor.y = 0;
-    buf.text = text_init(fd);
-    return buf;
+    buf.text = new(Text);
+    ok := text_init(buf.text, fd);
+    if !ok {
+        os.exit(1);
+    }
+    return true;
 }
 
 
@@ -70,6 +73,7 @@ buffer_handle_event :: proc(buffer: ^Buffer, event: tb.Event) {
         buffer_handle_event_insert(buffer, event);
     }
 }
+
 
 Direction :: enum u8 {
     Up,

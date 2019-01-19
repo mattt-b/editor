@@ -1,10 +1,12 @@
 package main
 
+
 import "core:fmt"
 import "core:log"
 import "core:os"
 
-import "shared:termbox"
+
+import tb "shared:termbox"
 
 
 main :: proc() {
@@ -29,7 +31,8 @@ main :: proc() {
     context.logger = log.create_file_logger(logger_handle);
     log.info("Editor start");
 
-    buffer := buffer_init(fd);
+    buffer := new(Buffer);
+    buffer_init(buffer, fd);
 
     tb_error := tb.init();
     if (cast(int)tb_error != 0) do fmt.print("Could not initialize Termbox: ", tb_error, "\n");
