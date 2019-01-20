@@ -35,7 +35,7 @@ buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool {
     buf.text = new(Text);
     ok := text_init(buf.text, fd);
     if !ok {
-        os.exit(1);
+        unimplemented();
     }
     return true;
 }

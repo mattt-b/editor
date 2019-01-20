@@ -9,33 +9,59 @@ import "core:os"
 import tb "shared:termbox"
 
 
+Editor :: struct {
+    handles: [dynamic]os.Handle,
+}
+
+
+editor := Editor{};
+
+_termbox_initialized := false;
+
+exit :: proc(status := 0) {
+    for handle, _ in editor.handles {
+        os.close(handle);
+    }
+    // Termbox will error when shutdown is called
+    // when not initialized:
+    // https://github.com/nsf/termbox/blob/355cccf74f4c7b896ea8a30b318d18d6d199204d/src/termbox.c#L144
+    if _termbox_initialized do tb.shutdown();
+    os.exit(status);
+}
+
 main :: proc() {
     if len(os.args) != 2 {
-        fmt.print("Usage: ", os.args[0], " <file_to_open>\n");
-        os.exit(1);
-    }
-
-    fd, err := os.open(os.args[1]);
-    if err != 0 {
-        fmt.println("Error opening file:", os.args[1]);
-        os.exit(1);
+        fmt.print_err("Usage: ", os.args[0], " <file_to_open>\n");
+        exit(1);
     }
 
     logger_flags := os.O_WRONLY|os.O_CREATE;
     logger_mode := os.S_IRUSR|os.S_IWUSR|os.S_IRGRP|os.S_IWGRP|os.S_IROTH;
     logger_handle, log_err := os.open("editor.log", logger_flags, logger_mode);
     if log_err != 0 {
-        fmt.println("Error creating logger");
-        os.exit(1);
+        fmt.println_err("Error creating log file");
+        exit(1);
     }
+    append(&editor.handles, logger_handle);
     context.logger = log.create_file_logger(logger_handle);
     log.info("Editor start");
+
+    fd, err := os.open(os.args[1]);
+    if err != 0 {
+        fmt.println_err("Error opening file:", os.args[1]);
+        exit(1);
+    }
+    append(&editor.handles, fd);
 
     buffer := new(Buffer);
     buffer_init(buffer, fd);
 
     tb_error := tb.init();
-    if (cast(int)tb_error != 0) do fmt.print("Could not initialize Termbox: ", tb_error, "\n");
+    if (cast(int)tb_error != 0) {
+        fmt.print_err("Could not initialize Termbox: ", tb_error, "\n");
+        exit(1);
+    }
+    _termbox_initialized = true;
 
     loop: for {
         buffer.width = cast(int)tb.width();
@@ -54,7 +80,5 @@ main :: proc() {
         buffer_handle_event(buffer, event);
     }
 
-    os.close(fd);
-    os.close(logger_handle);
-    tb.shutdown();
+    exit();
 }

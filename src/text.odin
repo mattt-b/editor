@@ -30,8 +30,9 @@ Text :: struct {
 text_init :: proc(text: ^Text, fd: os.Handle) -> bool {
     file_data, err := util.mmap(fd);
     if err != 0 {
-        fmt.println("Error reading file");
-        os.exit(1);
+        fmt.println_err("Error reading file");
+        exit(1);
+        unimplemented();
     }
 
     text.original = file_data;
