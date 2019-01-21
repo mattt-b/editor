@@ -9,19 +9,9 @@ import "core:os"
 import tb "shared:termbox"
 
 
-Editor :: struct {
-    handles: [dynamic]os.Handle,
-}
-
-
-editor := Editor{};
-
 _termbox_initialized := false;
 
 exit :: proc(status := 0) {
-    for handle, _ in editor.handles {
-        os.close(handle);
-    }
     // Termbox will error when shutdown is called
     // when not initialized:
     // https://github.com/nsf/termbox/blob/355cccf74f4c7b896ea8a30b318d18d6d199204d/src/termbox.c#L144
@@ -42,7 +32,6 @@ main :: proc() {
         fmt.println_err("Error creating log file");
         exit(1);
     }
-    append(&editor.handles, logger_handle);
     context.logger = log.create_file_logger(logger_handle);
     log.info("Editor start");
 
@@ -51,7 +40,6 @@ main :: proc() {
         fmt.println_err("Error opening file:", os.args[1]);
         exit(1);
     }
-    append(&editor.handles, fd);
 
     buffer := new(Buffer);
     buffer_init(buffer, fd);
@@ -63,7 +51,7 @@ main :: proc() {
     }
     _termbox_initialized = true;
 
-    loop: for {
+    for {
         buffer.width = cast(int)tb.width();
         buffer.height = cast(int)tb.height();
 
