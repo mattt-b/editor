@@ -30,8 +30,9 @@ Buffer :: struct {
 
 buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool {
     buf.mode = BufferMode.Normal;
-    buf.cursor.x = 0;
-    buf.cursor.y = 0;
+    buf.cursor.x = 1;
+    buf.cursor.y = 1;
+    buf.cursor.prev_x = 1;
     buf.text = new(Text);
     ok := text_init(buf.text, fd);
     if !ok {
@@ -88,56 +89,62 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
 
     switch direction {
     case Direction.Up:
-        cursor.y = max(0, cursor.y - 1);
+        cursor.y = max(1, cursor.y - 1);
 
         line_len := line_len(text, cursor.y);
-        max_x := line_len == 0 ? 0 : line_len - 1;
+        max_x := line_len == 0 ? 1 : line_len;
         cursor.x = min(max_x, cursor.prev_x);
 
     case Direction.Down:
-        cursor.y = min(buffer.height - 1, line_count(buffer.text)-1, cursor.y + 1);
+        cursor.y = min(buffer.height - 1, len(buffer.text.lines), cursor.y + 1);
 
         line_len := line_len(text, cursor.y);
-        max_x := line_len == 0 ? 0 : line_len - 1;
+        max_x := line_len == 0 ? 1 : line_len;
         cursor.x = min(max_x, cursor.prev_x);
 
     case Direction.Left:
-        cursor.x = max(0, cursor.x - 1);
+        cursor.x = max(1, cursor.x - 1);
         cursor.prev_x = cursor.x;
 
     case Direction.Right:
         line_len := line_len(text, cursor.y);
         if line_len == 0 {
-            cursor.x = 0;
+            cursor.x = 1;
         } else {
-            cursor.x = min(line_len - 1, cursor.x + 1);
+            cursor.x = min(line_len, cursor.x + 1);
         }
         cursor.prev_x = cursor.x;
     }
 }
 
 render_buffer :: proc(buffer: ^Buffer) {
-    y := 0;
-    x := 0;
-    piece := buffer.text.pieces;
-    for piece != nil {
-        content := piece.content;
-        for i := 0; i < len(content); i += 1{
-            if buffer.height == y do break;
-            if (buffer.width == x || content[i] == '\n') {
-                // advance to next line
-                y += 1;
-                x = 0;
-                continue;
-            };
+    iterator := TextIterator{};
+    text_iterator_init(&iterator, buffer.text);
 
-            tb.change_cell(i32(x), i32(y), cast(u32)content[i], tb.Color.DEFAULT, tb.Color.DEFAULT);
-            x += 1;
+    line := 1;
+    col := 1;
+    char: u8;
+    more_text: bool;
+    for {
+        char, more_text = text_iterate_next(&iterator);
+        if line > buffer.height do break;
+        if col > buffer.width {
+            // TODO: skip to next line
         }
 
-        piece = piece.next;
+        if char == '\n' {
+            line += 1;
+            col = 1;
+            continue;
+        }
+
+        tb.change_cell(i32(col - 1), i32(line - 1), u32(char), tb.Color.DEFAULT, tb.Color.DEFAULT);
+
+        if !more_text do break;
+
+        col += 1;
     }
 
-    tb.set_cursor(cast(i32)buffer.cursor.x, cast(i32)buffer.cursor.y);
+    tb.set_cursor(cast(i32)buffer.cursor.x - 1, cast(i32)buffer.cursor.y - 1);
     tb.present();
 }
