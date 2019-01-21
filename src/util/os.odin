@@ -15,7 +15,6 @@ foreign libc {
     @(link_name="mmap") _unix_mmap :: proc(addr: rawptr, length: int, prot: int,
                                            flags: int, fd: os.Handle,
                                            offset: int) -> rawptr ---;
-    memchr :: proc(s: rawptr, c: u8, n: int) -> rawptr ---;
 }
 
 mmap :: proc(fd: os.Handle) -> ([]u8, os.Errno) {
