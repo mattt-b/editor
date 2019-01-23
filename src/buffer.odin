@@ -138,6 +138,7 @@ render_buffer :: proc(buffer: ^Buffer) {
             continue;
         }
 
+        // FIXME: handle escape/non-visible characters
         tb.change_cell(i32(col - 1), i32(line - 1), u32(char), tb.Color.DEFAULT, tb.Color.DEFAULT);
 
         if !more_text do break;

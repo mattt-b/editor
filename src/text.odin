@@ -20,9 +20,15 @@ Piece :: struct {
 }
 
 
-LineStart :: struct {
-  piece: ^Piece,
-  index: int,
+Line :: struct {
+    piece: ^Piece,
+    index: int,
+    length: int,
+}
+
+LineEndStyle :: enum u8 {
+    LF = '\n',
+    CRLF = '\r',
 }
 
 
@@ -36,9 +42,10 @@ TextIterator :: struct {
 
 
 Text :: struct {
+    line_end_style: LineEndStyle,
     original: []u8,
     pieces: ^Piece,
-    lines: [dynamic]LineStart,
+    lines: [dynamic]Line,
 }
 
 
@@ -57,6 +64,27 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool {
     initial_piece.content = file_data[0:len(file_data)];
     text.pieces = initial_piece;
 
+    // Default to LF
+    text.line_end_style = LineEndStyle.LF;
+    // Set it to something else if detected
+    for char, i in file_data {
+        if char == '\n' {
+            text.line_end_style = LineEndStyle.LF;
+            break;
+        }
+        if char == '\r' {
+            if len(file_data) >= i + 1 + 1 {
+                unimplemented("Not handling bare CR");
+            }
+            if file_data[i + 1] == '\n' {
+                text.line_end_style = LineEndStyle.CRLF;
+                break;
+            } else {
+                unimplemented("Not handling bare CR");
+            }
+        }
+    }
+
     text_set_lines(text);
 
     return true;
@@ -67,24 +95,30 @@ text_set_lines :: proc(text: ^Text) {
     if len(text.lines) != 0 do clear_dynamic_array(&text.lines);
 
     piece := text.pieces;
-    new_line := LineStart{piece=piece, index=0};
-    append(&text.lines, new_line);
-
+    new_line := Line{piece=piece, index=0};
+    length := 0;
     for {
-        for char, index in piece.content {
-            if char != '\n' do continue;
+        for char, i in piece.content {
+            if char != u8(text.line_end_style) {
+                length += 1;
+                continue;
+            }
 
-            if len(piece.content) == index + 1 {
-                // This '\n' is on a piece boundary
+            new_line.length = length;
+            append(&text.lines, new_line);
+            length = 0;
+
+            if text.line_end_style == LineEndStyle.CRLF do unimplemented("FIXME: Handle CRLF");
+            if len(piece.content) == i + 1 {
+                // This line ending is on a piece boundary
                 // If it's the last piece, we're done
                 if piece.next == nil do return;
                 // otherwise, ensure we move on to the next piece for the LineStart
-                new_line = LineStart{piece=piece.next, index=0};
+                new_line = Line{piece=piece.next, index=0};
             } else {
                 // Add + 1 to index the first char after '\n'
-                new_line = LineStart{piece=piece, index=index + 1};
+                new_line = Line{piece=piece, index=i + 1};
             }
-            append(&text.lines, new_line);
         }
         if piece.next == nil do return;
         piece = piece.next;
@@ -119,41 +153,7 @@ line_len :: proc(text: ^Text, line_num: int) -> int {
     assert(line_num > 0);
     assert(line_num <= len(text.lines));
 
-    // translate cursor space to data space
-    line := text.lines[line_num - 1];
-
-    if len(text.lines) == line_num {
-        unreachable();
-    }
-
-    next_line := text.lines[line_num - 1 + 1];
-    if next_line.piece == line.piece {
-        // Simplest case. This piece holds the full line.
-        // Early out here to simplify logic when looping through pieces below
-        // -1 to account for newline that is skipped
-        return next_line.index - line.index - 1;
-    }
-
-    length := len(line.piece.content) - line.index;
-    // This is holding the piece whose length we are checking
-    // and it will change through the loop
-    assert(line.piece.next != nil);
-    piece := line.piece.next;
-    for {
-        if piece == next_line.piece {
-            length += next_line.index;
-            // - 1 to account for newline that is skipped
-            return length - 1;
-        }
-
-        unreachable();
-        // This piece does not contain the next LineStart
-        length += len(piece.content);
-        assert(piece.next != nil);
-        piece = piece.next;
-    }
-    unreachable();
-    return 0;
+    return text.lines[line_num - 1].length;
 }
 
 
