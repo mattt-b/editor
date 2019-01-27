@@ -208,7 +208,7 @@ text_iterate_next :: proc(iterator: ^TextIterator) -> (rune, bool) {
 }
 
 
-display_line_len :: proc(text: ^Text, line_num: int) -> int {
+display_len :: proc(text: ^Text, line_num: int) -> int {
     assert(line_num > 0);
     assert(line_num <= len(text.lines));
 

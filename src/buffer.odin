@@ -91,14 +91,14 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
     case Direction.Up:
         cursor.y = max(1, cursor.y - 1);
 
-        line_len := display_line_len(text, cursor.y);
+        line_len := display_len(text, cursor.y);
         max_x := line_len == 0 ? 1 : line_len;
         cursor.x = min(max_x, cursor.prev_x);
 
     case Direction.Down:
         cursor.y = min(buffer.height, len(buffer.text.lines), cursor.y + 1);
 
-        line_len := display_line_len(text, cursor.y);
+        line_len := display_len(text, cursor.y);
         max_x := line_len == 0 ? 1 : line_len;
         cursor.x = min(max_x, cursor.prev_x);
 
@@ -107,7 +107,7 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
         cursor.prev_x = cursor.x;
 
     case Direction.Right:
-        line_len := display_line_len(text, cursor.y);
+        line_len := display_len(text, cursor.y);
         if line_len == 0 {
             cursor.x = 1;
         } else {
@@ -122,7 +122,7 @@ render_buffer :: proc(buffer: ^Buffer) {
     iterator := TextIterator{};
     for line := 1; line <= len(buffer.text.lines) && line <= buffer.height; line += 1 {
         text_iterator_init(&iterator, buffer.text, line);
-        line_len := display_line_len(buffer.text, line);
+        line_len := display_len(buffer.text, line);
 
         for col := 1; col <= line_len && col <= buffer.width; {
             char, more := text_iterate_next(&iterator);
