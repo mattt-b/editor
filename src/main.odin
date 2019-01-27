@@ -1,6 +1,7 @@
 package main
 
 
+import "core:runtime"
 import "core:fmt"
 import "core:log"
 import "core:os"
@@ -9,12 +10,17 @@ import "core:os"
 import tb "shared:termbox"
 
 
+// Termbox will error when shutdown is called
+// when not initialized:
+// https://github.com/nsf/termbox/blob/355cccf74f4c7b896ea8a30b318d18d6d199204d/src/termbox.c#L144
 _termbox_initialized := false;
 
+assertion_failure_proc :: proc(prefix, message: string, loc: runtime.Source_Code_Location) {
+    if _termbox_initialized do tb.shutdown();
+    runtime.default_assertion_failure_proc(prefix, message, loc);
+}
+
 exit :: proc(status := 0) {
-    // Termbox will error when shutdown is called
-    // when not initialized:
-    // https://github.com/nsf/termbox/blob/355cccf74f4c7b896ea8a30b318d18d6d199204d/src/termbox.c#L144
     if _termbox_initialized do tb.shutdown();
     os.exit(status);
 }
@@ -24,6 +30,7 @@ main :: proc() {
         fmt.print_err("Usage: ", os.args[0], " <file_to_open>\n");
         exit(1);
     }
+    context.assertion_failure_proc = assertion_failure_proc;
 
     logger_flags := os.O_WRONLY|os.O_CREATE;
     logger_mode := os.S_IRUSR|os.S_IWUSR|os.S_IRGRP|os.S_IWGRP|os.S_IROTH;
