@@ -129,7 +129,7 @@ text_set_lines :: proc(text: ^Text) {
                 // set here
                 if char == '\t' {
                     display_len += text.tab_width;
-                } else if char < 256 {
+                } else if char < 128 {
                     // ascii character
                     display_len += ascii_display_len(char);
                 } else {
