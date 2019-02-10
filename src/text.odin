@@ -121,7 +121,6 @@ text_set_lines :: proc(text: ^Text) {
         single_piece: for {
             char, bytes_read := utf8.decode_rune(piece.content[piece_bytes_read:]);
             piece_bytes_read += bytes_read;
-            if char == utf8.RUNE_ERROR do unimplemented();
 
             // not a newline char
             if char != rune(text.line_end_style) {
@@ -129,9 +128,14 @@ text_set_lines :: proc(text: ^Text) {
                 // as an escape char or multichar code needs to be
                 // set here
                 if char == '\t' {
-                    unimplemented();
                     display_len += text.tab_width;
+                } else if char < 256 {
+                    // ascii character
+                    display_len += ascii_display_len(char);
                 } else {
+                    // UTF8 rune that's not ascii
+                    // treating them all as single displayable runes
+                    // (no grapheme clusters)
                     display_len += 1;
                 }
                 file_len += bytes_read;
@@ -208,7 +212,7 @@ text_iterate_next :: proc(iterator: ^TextIterator) -> (rune, bool) {
 }
 
 
-display_len :: proc(text: ^Text, line_num: int) -> int {
+text_line_display_len :: inline proc(text: ^Text, line_num: int) -> int {
     assert(line_num > 0);
     assert(line_num <= len(text.lines));
 

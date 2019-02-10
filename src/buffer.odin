@@ -91,14 +91,14 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
     case Direction.Up:
         cursor.y = max(1, cursor.y - 1);
 
-        line_len := display_len(text, cursor.y);
+        line_len := text_line_display_len(text, cursor.y);
         max_x := line_len == 0 ? 1 : line_len;
         cursor.x = min(max_x, cursor.prev_x);
 
     case Direction.Down:
         cursor.y = min(buffer.height, len(buffer.text.lines), cursor.y + 1);
 
-        line_len := display_len(text, cursor.y);
+        line_len := text_line_display_len(text, cursor.y);
         max_x := line_len == 0 ? 1 : line_len;
         cursor.x = min(max_x, cursor.prev_x);
 
@@ -107,7 +107,7 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
         cursor.prev_x = cursor.x;
 
     case Direction.Right:
-        line_len := display_len(text, cursor.y);
+        line_len := text_line_display_len(text, cursor.y);
         if line_len == 0 {
             cursor.x = 1;
         } else {
@@ -122,20 +122,37 @@ render_buffer :: proc(buffer: ^Buffer) {
     iterator := TextIterator{};
     for line := 1; line <= len(buffer.text.lines) && line <= buffer.height; line += 1 {
         text_iterator_init(&iterator, buffer.text, line);
-        line_len := display_len(buffer.text, line);
+        line_len := text_line_display_len(buffer.text, line);
 
         for col := 1; col <= line_len && col <= buffer.width; {
             char, more := text_iterate_next(&iterator);
 
-            // FIXME: handle escape/non-visible characters
-            tb.change_cell(i32(col - 1), i32(line - 1), u32(char), tb.Color.DEFAULT, tb.Color.DEFAULT);
+            switch {
+            case char >= 256:
+                // utf8 char
+                fallthrough;
+            case char >= DISPLAYABLE_ASCII_MIN && char <= DISPLAYABLE_ASCII_MAX:
+                // single cell ascii char
+                tb.change_cell(i32(col - 1), i32(line - 1), u32(char),
+                               tb.Color.DEFAULT, tb.Color.DEFAULT);
+                col += 1;
+            case char == '\t':
+                for _ in 1..buffer.text.tab_width {
+                    tb.change_cell(i32(col - 1), i32(line - 1), u32(' '),
+                                   tb.Color.DEFAULT, tb.Color.DEFAULT);
+                    col += 1;
+                }
+                case:
+                // multi cell ascii escape code
+                display_str := AsciiDisplayTable[char];
+                for display_char in display_str {
+                    tb.change_cell(i32(col - 1), i32(line - 1), u32(display_char),
+                                   tb.Color.DEFAULT, tb.Color.DEFAULT);
+                    col += 1;
+                }
+            }
 
             if !more do break;
-            if char == '\t' {
-                col += buffer.text.tab_width;
-            } else {
-                col += 1;
-            }
         }
     }
 
