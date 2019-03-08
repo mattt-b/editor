@@ -60,7 +60,7 @@ main :: proc() {
 
     for {
         buffer.width = cast(int)tb.width();
-        buffer.height = cast(int)tb.height();
+        buffer.height = cast(int)tb.height() - 1;
 
         render_buffer(buffer);
 

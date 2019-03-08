@@ -158,6 +158,20 @@ render_buffer :: proc(buffer: ^Buffer) {
         }
     }
 
+    // Status Bar
+    mode_display: rune;
+    #complete switch buffer.mode {
+        case .Normal: mode_display = 'N';
+        case .Insert: mode_display = 'I';
+    }
+    // TODO: Give option to change bg color per mode?
+    tb.change_cell(0, i32(buffer.height), mode_display,
+                   tb.Color.WHITE | tb.Color.BOLD, tb.Color.GREEN);
+    for i := 1; i < buffer.width; i += 1 {
+        tb.change_cell(i32(i), i32(buffer.height), ' ',
+                       tb.Color.WHITE | tb.Color.BOLD, tb.Color.GREEN);
+    }
+
     tb.set_cursor(cast(i32)buffer.cursor.x - 1, cast(i32)buffer.cursor.y - 1);
     tb.present();
 }
