@@ -128,26 +128,27 @@ render_buffer :: proc(buffer: ^Buffer) {
         for col := 1; col <= line_len && col <= buffer.width; {
             char, more := text_iterate_next(&iterator);
 
+            // TODO: Change these 'change_cell' calls to use 'tb.cell_buffer'
             switch {
             case char >= 256:
                 // utf8 char
                 fallthrough;
             case char >= DISPLAYABLE_ASCII_MIN && char <= DISPLAYABLE_ASCII_MAX:
                 // single cell ascii char
-                tb.change_cell(i32(col - 1), i32(line - 1), u32(char),
+                tb.change_cell(i32(col - 1), i32(line - 1), char,
                                tb.Color.DEFAULT, tb.Color.DEFAULT);
                 col += 1;
             case char == '\t':
                 for _ in 1..buffer.text.tab_width {
-                    tb.change_cell(i32(col - 1), i32(line - 1), u32(' '),
+                    tb.change_cell(i32(col - 1), i32(line - 1), rune(' '),
                                    tb.Color.DEFAULT, tb.Color.DEFAULT);
                     col += 1;
                 }
-                case:
+            case:
                 // multi cell ascii escape code
                 display_str := AsciiDisplayTable[char];
                 for display_char in display_str {
-                    tb.change_cell(i32(col - 1), i32(line - 1), u32(display_char),
+                    tb.change_cell(i32(col - 1), i32(line - 1), display_char,
                                    tb.Color.DEFAULT, tb.Color.DEFAULT);
                     col += 1;
                 }
