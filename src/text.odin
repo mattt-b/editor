@@ -7,9 +7,13 @@ import "core:unicode/utf8"
 import "util"
 
 
-TextSource :: enum u8 {
-    Original,
-    Append,
+Text :: struct {
+    original: []u8,
+    pieces: ^Piece,
+    lines: [dynamic]Line,
+
+    line_end_style: LineEndStyle,
+    tab_width: int,
 }
 
 
@@ -21,8 +25,15 @@ Piece :: struct {
 }
 
 
+TextSource :: enum u8 {
+    Original,
+    Append,
+}
+
+
 Line :: struct {
     piece: ^Piece,
+    // At what index in the piece this Line starts at
     index: int,
     // How many bytes this line would take
     // in a file. (Newline chars are ignored)
@@ -44,16 +55,6 @@ TextIterator :: struct {
     piece: ^Piece,
     // Index in piece currently being iterated
     index: int,
-}
-
-
-Text :: struct {
-    original: []u8,
-    pieces: ^Piece,
-    lines: [dynamic]Line,
-
-    line_end_style: LineEndStyle,
-    tab_width: int,
 }
 
 

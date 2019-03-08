@@ -52,7 +52,7 @@ main :: proc() {
     buffer_init(buffer, fd);
 
     tb_error := tb.init();
-    if (cast(int)tb_error != 0) {
+    if (int(tb_error) != 0) {
         fmt.print_err("Could not initialize Termbox: ", tb_error, "\n");
         exit(1);
     }

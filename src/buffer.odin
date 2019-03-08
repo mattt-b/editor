@@ -43,7 +43,7 @@ buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool {
 
 
 buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
-    switch true {
+    switch {
     case event.key == tb.Key.ESC:
         buffer.mode = BufferMode.Normal;
     }
@@ -51,9 +51,10 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
 
 
 buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
-    switch true {
+    switch {
     case event.ch == 'i':
         buffer.mode = BufferMode.Insert;
+
     case event.ch == 'h':
         buffer_move_cursor(buffer, Direction.Left);
     case event.ch == 'j':
@@ -68,9 +69,9 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
 
 buffer_handle_event :: proc(buffer: ^Buffer, event: tb.Event) {
     switch buffer.mode {
-    case BufferMode.Normal:
+    case .Normal:
         buffer_handle_event_normal(buffer, event);
-    case BufferMode.Insert:
+    case .Insert:
         buffer_handle_event_insert(buffer, event);
     }
 }
