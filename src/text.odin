@@ -86,7 +86,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool {
             break;
         }
         if char == '\r' {
-            if len(file_data) >= total_bytes_read + 1 {
+            if len(file_data) == total_bytes_read + 1 {
                 unimplemented("Not handling bare CR");
             }
 
