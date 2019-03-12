@@ -8,8 +8,12 @@ ascii_display_len :: inline proc(char: rune) -> int {
     assert(char < 128);
     assert(char != 9);
     assert(char != 10);
-    if char > 32 && char < 127 do return 1;
-    return 2;
+
+    if char > 31 && char < 127 {
+        return 1;
+    } else {
+        return 2;
+    }
 }
 
 
