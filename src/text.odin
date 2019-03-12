@@ -79,8 +79,8 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool {
     // Set it to something else if detected
     total_bytes_read := 0;
     for {
-        char, bytes_read := utf8.decode_rune(file_data[total_bytes_read:]);
-        total_bytes_read += bytes_read;
+        char, rune_len := utf8.decode_rune(file_data[total_bytes_read:]);
+        total_bytes_read += rune_len;
         if char == '\n' {
             text.line_end_style = LineEndStyle.LF;
             break;
@@ -110,18 +110,19 @@ text_set_lines :: proc(text: ^Text) {
     if len(text.lines) != 0 do clear_dynamic_array(&text.lines);
 
     piece := text.pieces;
-    new_line := Line{piece=piece, index=0};
-    // Tracks the index index into piece.content []u8
+    line := Line{piece=piece, index=0};
+    // How many bytes into piece.content we've currently read
+    // Reset to 0 on new piece
     piece_bytes_read := 0;
-    // Count of u8 from piece.content for one line in a file (ignores newline)
+    // Count of bytes for line (ignores newline)
     file_len := 0;
-    // Count of runes in a line
+    // Count of runes for line (ignores newline)
     display_len := 0;
 
     all_pieces: for {
         single_piece: for {
-            char, bytes_read := utf8.decode_rune(piece.content[piece_bytes_read:]);
-            piece_bytes_read += bytes_read;
+            char, rune_len := utf8.decode_rune(piece.content[piece_bytes_read:]);
+            piece_bytes_read += rune_len;
 
             // not a newline char
             if char != rune(text.line_end_style) {
@@ -139,41 +140,42 @@ text_set_lines :: proc(text: ^Text) {
                     // (no grapheme clusters)
                     display_len += 1;
                 }
-                file_len += bytes_read;
+                file_len += rune_len;
 
                 if piece_bytes_read == len(piece.content) do break single_piece;
                 continue;
             }
 
-            // If we get here we're on a newline char start:
-            // \n or \r
-            new_line.file_len = file_len;
-            new_line.display_len = display_len;
-            append(&text.lines, new_line);
+            // If we get here we're on a newline char start: \n or \r
+            // save this line information and set up the next one
+            line.file_len = file_len;
+            line.display_len = display_len;
+            append(&text.lines, line);
 
             file_len = 0;
             display_len = 0;
 
             at_piece_end := piece_bytes_read == len(piece.content);
-
             if text.line_end_style == LineEndStyle.CRLF {
                 // TODO: Should be able to remove all of these if I'm sure
-                // that it's not possible to insert \r. Alternatively need
+                // that it's not possible to insert \r, and I've made sure
+                // that I've checked or fixed bare \r in the initial text
+                // setup (where line_end_style is set). Alternatively need
                 // to adjust all of this code if bare \r is allowed.
                 assert(!at_piece_end, "Shouldn't be able to split \r\n ?");
-                char, bytes_read = utf8.decode_rune(piece.content[piece_bytes_read:]);
+                char, rune_len = utf8.decode_rune(piece.content[piece_bytes_read:]);
                 assert(char == '\n', "Shouldn't be able to split \r\n ?");
-                assert(bytes_read == 1);
+                assert(rune_len == 1);
 
                 piece_bytes_read += 1;
                 at_piece_end = piece_bytes_read == len(piece.content);
             }
 
             if at_piece_end {
-                new_line = Line{piece=piece.next, index=0};
+                line = Line{piece=piece.next, index=0};
                 break single_piece;
             } else {
-                new_line = Line{piece=piece, index=piece_bytes_read};
+                line = Line{piece=piece, index=piece_bytes_read};
             }
         }
 
@@ -206,8 +208,8 @@ text_iterate_next :: proc(iterator: ^TextIterator) -> (rune, bool) {
         iterator.index = 0;
     }
 
-    char, bytes_read := utf8.decode_rune(iterator.piece.content[iterator.index:]);
-    iterator.index += bytes_read;
+    char, rune_len := utf8.decode_rune(iterator.piece.content[iterator.index:]);
+    iterator.index += rune_len;
 
     return char, true;
 }
