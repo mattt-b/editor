@@ -49,7 +49,8 @@ main :: proc() {
     }
 
     buffer := new(Buffer);
-    buffer_init(buffer, fd);
+    ok := buffer_init(buffer, fd);
+    if !ok do unimplemented();
 
     tb_error := tb.init();
     if (int(tb_error) != 0) {

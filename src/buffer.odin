@@ -10,6 +10,7 @@ BufferMode :: enum u8 {
     Insert,
 }
 
+
 Cursor :: struct {
     x: int,
     y: int,
@@ -20,6 +21,7 @@ Cursor :: struct {
     prev_x: int,
 }
 
+
 Buffer :: struct {
     width: int,
     height: int,
@@ -28,24 +30,30 @@ Buffer :: struct {
     cursor: Cursor,
 }
 
-buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool {
+
+buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool #require_results {
     buf.mode = BufferMode.Normal;
     buf.cursor.x = 1;
     buf.cursor.y = 1;
     buf.cursor.prev_x = 1;
     buf.text = new(Text);
+    if buf.text == nil do return false;
     ok := text_init(buf.text, fd);
-    if !ok {
-        unimplemented();
-    }
+    if !ok do unimplemented();
     return true;
 }
 
 
 buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
     switch {
+    case event.ch != 0:
+        text_insert(buffer.text, event.ch);
+        buffer.cursor.x += 1;
+        buffer.cursor.prev_x = buffer.cursor.x;
+
     case event.key == tb.Key.ESC:
         buffer.mode = BufferMode.Normal;
+        buffer.cursor.x = max(1, buffer.cursor.x - 1);
     }
 }
 
@@ -53,6 +61,10 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
 buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     switch {
     case event.ch == 'i':
+        ok := text_begin_insert(buffer.text, buffer.cursor.y, buffer.cursor.x);
+        if !ok {
+            unimplemented();
+        }
         buffer.mode = BufferMode.Insert;
 
     case event.ch == 'h':
