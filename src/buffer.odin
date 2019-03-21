@@ -47,7 +47,9 @@ buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool #require_results {
 buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
     switch {
     case event.ch != 0:
-        text_insert(buffer.text, event.ch);
+        ok := text_insert(buffer.text, event.ch);
+        if !ok do unimplemented();
+
         buffer.cursor.x += 1;
         buffer.cursor.prev_x = buffer.cursor.x;
 
@@ -61,10 +63,7 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
 buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     switch {
     case event.ch == 'i':
-        ok := text_begin_insert(buffer.text, buffer.cursor.y, buffer.cursor.x);
-        if !ok {
-            unimplemented();
-        }
+        text_begin_insert(buffer.text, buffer.cursor.y, buffer.cursor.x);
         buffer.mode = BufferMode.Insert;
 
     case event.ch == 'h':
@@ -132,18 +131,15 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
 
 
 render_buffer :: proc(buffer: ^Buffer) {
-    iterator := TextIterator{};
     for line := 1; line <= len(buffer.text.lines) && line <= buffer.height; line += 1 {
-        text_iterator_init(&iterator, buffer.text, line);
         line_len := text_line_display_len(buffer.text, line);
 
-        for col := 1; col <= line_len && col <= buffer.width; {
-            char, more := text_iterate_next(&iterator);
-
-            // TODO: Change these 'change_cell' calls to use 'tb.cell_buffer'
+        col := 1;
+        for char in string(buffer.text.lines[line - 1].content[:]) {
             switch {
             case char >= 256:
                 // utf8 char
+                // assumed to only take one displayable char
                 fallthrough;
             case char >= DISPLAYABLE_ASCII_MIN && char <= DISPLAYABLE_ASCII_MAX:
                 // single cell ascii char
@@ -166,7 +162,7 @@ render_buffer :: proc(buffer: ^Buffer) {
                 }
             }
 
-            if !more do break;
+            if col > line_len || col > buffer.width do break;
         }
     }
 

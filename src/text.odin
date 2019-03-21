@@ -9,52 +9,35 @@ import "util"
 
 
 Text :: struct {
-    // Not actually dynamic. Just matching type
-    // signatures with 'change' for now
-    original: [dynamic]u8,
-    updates: [dynamic]u8,
-
-    changes: TextChanges,
-
-    pieces: ^Piece,
     lines: [dynamic]Line,
+
+    past: [dynamic]TextChange,
+    current_change: TextChange,
+    future: [dynamic]TextChange,
 
     line_end_style: LineEndStyle,
     tab_width: int,
 }
 
 
-Piece :: struct {
-    content: ^[dynamic]u8,
-    start: int,
-    len: int,
-    prev: ^Piece,
-    next: ^Piece,
-}
-
-
-TextChanges :: struct {
-    any: bool,
-
-    prev: ^Piece,
-    insert: ^Piece,
-    next: ^Piece,
-
-    replacing_prev: ^Piece,
-    replacing_next: ^Piece,
-}
-
-
 Line :: struct {
-    piece: ^Piece,
-    // At what byte index in the piece this Line starts at
-    index: int,
-    // How many bytes this line would take
-    // in a file. (Newline chars are ignored)
-    file_len: int,
-    // How much space would be needed to
-    // render the entire line
+    content: [dynamic]u8,
+
+    // Number of displayable characters.
+    // For example a utf8 char might take two bytes but only display
+    // as one char, or an escape char might take one byte but display as two.
+    // Tabs will also affect this unless tab_width == 1
     display_len: int,
+}
+
+
+TextChange :: struct {
+    line: int,
+    index: int,
+
+    backspaced: int,
+    inserted: int,
+    deleted: int,
 }
 
 
@@ -64,46 +47,23 @@ LineEndStyle :: enum u8 {
 }
 
 
-TextIterator :: struct {
-    text: ^Text,
-    // Piece that is currently being iterated over
-    piece: ^Piece,
-    // Index in piece currently being iterated
-    index: int,
-}
-
-
 text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
     file_data, err := util.mmap(fd);
     if err != 0 {
         fmt.println_err("Error reading file");
-        exit(1);
         unimplemented();
     }
     text.tab_width = 4;
 
-    // change the file_data slice to a [dynamic]u8 to match signatures
-    // with the 'text.changes' [array]
-    text.original = transmute([dynamic]u8)mem.Raw_Dynamic_Array{
-        data=(^mem.Raw_Slice)(&file_data).data,
-        len=len(file_data),
-        cap=len(file_data),
-        // ensure this can't be resized on accident
-        allocator=mem.nil_allocator(),
-    };
-
-    initial_piece := new(Piece);
-    initial_piece.content = &text.original;
-    initial_piece.len= len(file_data);
-    text.pieces = initial_piece;
-
-    // Default to LF
+    // Default to LF if this ends up being a one line file
     text.line_end_style = LineEndStyle.LF;
-    // Set it to something else if detected
     total_bytes_read := 0;
-    for {
+    line_display_len := 0;
+
+    // Figure out line end style and set up first line
+    for total_bytes_read < len(file_data) {
         char, rune_len := utf8.decode_rune(file_data[total_bytes_read:]);
-        total_bytes_read += rune_len;
+
         if char == '\n' {
             text.line_end_style = LineEndStyle.LF;
             break;
@@ -113,7 +73,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
                 unimplemented("Not handling bare CR");
             }
 
-            next_char, _ := utf8.decode_rune(file_data[total_bytes_read:]);
+            next_char, _ := utf8.decode_rune(file_data[total_bytes_read+1:]);
             if next_char == '\n' {
                 text.line_end_style = LineEndStyle.CRLF;
                 break;
@@ -121,111 +81,64 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
                 unimplemented("Not handling bare CR");
             }
         }
+
+        if char == '\t' {
+            line_display_len += text.tab_width;
+        } else if char < 128 {
+            line_display_len += ascii_display_len(char);
+        } else {
+            line_display_len += 1;
+        }
+        total_bytes_read += rune_len;
     }
 
-    text_set_lines(text);
+    // Set up rest of lines
+    line_start := 0;
+    for {
+        // Handle the case that the file does not end on a newline
+        if total_bytes_read == len(file_data) {
+            line_content := make([dynamic]u8, total_bytes_read - line_start);
+            mem.copy(&line_content[0], &file_data[line_start], total_bytes_read - line_start);
+            append(&text.lines, Line{content=line_content, display_len=line_display_len});
+            break;
+        }
 
-    return true;
-}
+        char, rune_len := utf8.decode_rune(file_data[total_bytes_read:]);
 
-
-text_set_lines :: proc(text: ^Text) {
-    if len(text.lines) != 0 do clear_dynamic_array(&text.lines);
-
-    piece := text.pieces;
-    line := Line{piece=piece, index=0};
-    // How many bytes into piece.content we've currently read
-    // Reset to 0 on new piece
-    piece_bytes_read := 0;
-    // Count of bytes for line (ignores newline)
-    file_len := 0;
-    // Count of runes for line (ignores newline)
-    display_len := 0;
-
-    single_piece: for {
-        char, rune_len := utf8.decode_rune(piece.content[piece_bytes_read:]);
-        piece_bytes_read += rune_len;
-
-        // not a newline char
-        if char != rune(text.line_end_style) {
-            // TODO: Any char that needs to be represented
-            // as an escape char or multichar code needs to be
-            // set here
-            if char == '\t' {
-                display_len += text.tab_width;
-            } else if char < 128 {
-                // ascii character
-                display_len += ascii_display_len(char);
-            } else {
-                // UTF8 rune that's not ascii
-                // treating them all as single displayable runes
-                // (no grapheme clusters)
-                display_len += 1;
+        if char == rune(text.line_end_style) {
+            line_content := make([dynamic]u8, total_bytes_read - line_start);
+            if total_bytes_read - line_start > 0 {
+                mem.copy(&line_content[0], &file_data[line_start], total_bytes_read - line_start);
             }
-            file_len += rune_len;
+            append(&text.lines, Line{content=line_content, display_len=line_display_len});
 
-            if piece_bytes_read == piece.len {
-                if piece.next == nil do return;
-                piece = piece.next;
-                piece_bytes_read = 0;
+            line_display_len = 0;
+
+            total_bytes_read += rune_len;
+            line_start = total_bytes_read;
+
+            #complete switch text.line_end_style {
+                case .LF:
+                case .CRLF:
+                char, rune_len = utf8.decode_rune(file_data[total_bytes_read:]);
+                assert(char == '\n', "Bare \r not currently supported");
+                total_bytes_read += rune_len;
             }
+            if total_bytes_read == len(file_data) do break;
             continue;
         }
 
-        // If we get here we're on a newline char start: \n or \r
-        // save this line information and set up the next one
-        line.file_len = file_len;
-        line.display_len = display_len;
-        append(&text.lines, line);
-
-        file_len = 0;
-        display_len = 0;
-
-        at_piece_end := piece_bytes_read == piece.len;
-        if text.line_end_style == LineEndStyle.CRLF {
-            // TODO: Should be able to remove all of these if I'm sure
-            // that it's not possible to insert \r, and I've made sure
-            // that I've checked or fixed bare \r in the initial text
-            // setup (where line_end_style is set). Alternatively need
-            // to adjust all of this code if bare \r is allowed.
-            assert(!at_piece_end, "Shouldn't be able to split \r\n ?");
-            char, rune_len = utf8.decode_rune(piece.content[piece_bytes_read:]);
-            assert(char == '\n', "Shouldn't be able to split \r\n ?");
-            assert(rune_len == 1);
-
-            piece_bytes_read += 1;
-            at_piece_end = piece_bytes_read == piece.len;
-        }
-
-        if at_piece_end {
-            line = Line{piece=piece.next, index=0};
-            break single_piece;
+        if char == '\t' {
+            line_display_len += text.tab_width;
+        } else if char < 128 {
+            line_display_len += ascii_display_len(char);
         } else {
-            line = Line{piece=piece, index=piece_bytes_read};
+            line_display_len += 1;
         }
-    }
-}
-
-
-text_iterator_init :: proc(iterator: ^TextIterator, text: ^Text, line_num := 1) {
-    iterator.text = text;
-    iterator.piece = text.lines[line_num - 1].piece;
-    iterator.index = text.lines[line_num - 1].index;
-}
-
-
-text_iterate_next :: proc(iterator: ^TextIterator) -> (rune, bool) {
-    if iterator.index >= iterator.piece.len {
-        assert(iterator.piece.next != nil);
-        iterator.piece = iterator.piece.next;
-        assert(iterator.piece.len > 0);
-        iterator.index = 0;
+        total_bytes_read += rune_len;
     }
 
-    char, rune_len := utf8.decode_rune(iterator.piece.content[iterator.index:]);
-    iterator.index += rune_len;
-
-    return char, true;
+    return true;
 }
 
 
@@ -234,99 +147,57 @@ text_line_display_len :: inline proc(text: ^Text, line_num: int) -> int {
 }
 
 
-text_begin_insert :: proc(text: ^Text, line_num, col: int) -> bool #require_results {
-    text.changes.any = false;
-
-    // Create the pieces if they don't exist already
-    if text.changes.insert == nil {
-        // TODO: Probably should use a custom allocator to put them
-        // all in the same spot
-        insert_piece := new(Piece);
-        if insert_piece == nil do return false;
-
-        insert_piece.content = &text.updates;
-        text.changes.insert = insert_piece;
-    }
-
-    // Here we either have a new piece or we are re-purposing an unused piece
-    // (from going into insert mode but not making any changes).
-    text.changes.insert.start = len(text.updates);
-
-    // TODO: special case not needing the iterator?
-
-    // figure out the piece/byte offset to split prev at
-    text_iterator: TextIterator;
-    text_iterator_init(&text_iterator, text, line_num);
-    more := true;
-    for i := 1; i < col; i += 1 {
-        assert(more);
-        _, more = text_iterate_next(&text_iterator);
-    }
-
-    text.changes.replacing_prev = text_iterator.piece;
-    if line_num != 1 || col != 1 {
-        assert(text_iterator.piece.prev != nil || text_iterator.index != 0);
-        prev_piece := new(Piece);
-        if prev_piece == nil do return false;
-
-        prev_piece^ = text_iterator.piece^;
-        prev_piece.len = text_iterator.index;
-        prev_piece.next = text.changes.insert;
-
-        text.changes.prev = prev_piece;
-        text.changes.insert.prev = prev_piece;
+text_begin_insert :: proc(text: ^Text, line_num, col: int) {
+    line := text.lines[line_num - 1];
+    if len(line.content) == line.display_len {
+        text.current_change = TextChange{line=line_num, index=col-1};
     } else {
-        // Do nothing. Prev pieces will remain nil and checked for later
+        total_bytes_read := 0;
+        for current_col := 1; current_col < col; {
+            char, rune_len := utf8.decode_rune(line.content[total_bytes_read:]);
+            total_bytes_read += rune_len;
+            if char == '\t' {
+                current_col += text.tab_width;
+            } else if char < 128 {
+                current_col += ascii_display_len(char);
+            } else {
+                current_col += 1;
+            }
+        }
+        text.current_change = TextChange{line=line_num, index=total_bytes_read};
     }
-
-    // this will handle the event that we're on a piece boundary
-    // so we can find the next piece
-    if more do _, more = text_iterate_next(&text_iterator);
-
-    if more {
-        next_piece := new(Piece);
-        if next_piece == nil do return false;
-        next_piece^ = text_iterator.piece^;
-
-        next_piece.start = text_iterator.index;
-        next_piece.len -= text_iterator.index;
-        next_piece.prev = text.changes.insert;
-
-        text.changes.insert.next = next_piece;
-        text.changes.next = next_piece;
-    } else {
-        // Do nothing. Next pieces will remain nil and checked for later
-    }
-
-    return true;
 }
 
 
-text_insert :: proc(text: ^Text, char: rune) {
+text_insert :: proc(text: ^Text, char: rune) -> bool #require_results {
     bytes, count := utf8.encode_rune(char);
-    append(&text.updates, ..bytes[:count]);
 
-    text.changes.insert.len += count;
+    line := &text.lines[text.current_change.line - 1];
 
-    if !text.changes.any {
-        // First additions. Insert the new pieces into the piece table
-        text.changes.any = true;
-
-        if text.changes.replacing_prev.prev != nil {
-            text.changes.replacing_prev.prev.next = text.changes.prev;
-        } else {
-            // In this block we're replacing the first piece
-            if text.changes.prev != nil {
-                // Normal case, anything other than line 1 col 1
-                text.pieces = text.changes.prev;
-            } else {
-                // Inserting into line 1 col 1
-                text.pieces = text.changes.insert;
-            }
-        }
-
+    // NOTE: This gets a bit into Odin dynamic array implementation details.
+    // Since we aren't appending, we miss out on the normal
+    // growth function for this array. Resize would continually give
+    // the bare minimum growth causing a realloc and memcpy everytime
+    if cap(line.content) < len(line.content) + count {
+        ok := reserve(&line.content, 2 * cap(line.content) + 8);
+        if !ok do return false;
     }
+    ok := resize(&line.content, len(line.content) + count);
+    if !ok do return false;
 
-    // TODO: Think this out better.
-    text_set_lines(text);
+    insert_location := text.current_change.index + text.current_change.inserted;
+    // Move existing text over
+    copy(line.content[insert_location + count:], line.content[insert_location:]);
+    // Insert char
+    copy(line.content[insert_location:], bytes[:count]);
+    text.current_change.inserted += count;
+
+    if char == '\t' {
+        line.display_len += text.tab_width;
+    } else if char < 128 {
+        line.display_len += ascii_display_len(char);
+    } else {
+        line.display_len += 1;
+    }
+    return true;
 }
