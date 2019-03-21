@@ -1,6 +1,7 @@
 package main
 
 import "core:os"
+import "core:unicode/utf8"
 
 import tb "shared:termbox"
 
@@ -50,12 +51,14 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
         ok := text_insert(buffer.text, event.ch);
         if !ok do unimplemented();
 
+        // TODO: this won't handle cursor movement on multi-chars
         buffer.cursor.x += 1;
         buffer.cursor.prev_x = buffer.cursor.x;
 
     case event.key == tb.Key.ESC:
         buffer.mode = BufferMode.Normal;
         buffer.cursor.x = max(1, buffer.cursor.x - 1);
+        buffer.cursor.prev_x = buffer.cursor.x;
     }
 }
 
@@ -97,33 +100,100 @@ Direction :: enum u8 {
 
 
 buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
-    using Direction;
+    // Handle multichar chars (tab/escape codes)
+    x_fix :: proc(line: Line, attempt_col: int, tab_width: int) -> int {
+        // Whether these are valid is handled elsewhere
+        assert(attempt_col > 0);
+        assert(attempt_col <= line.display_len ||
+               (line.display_len == 0 && attempt_col == 1));
 
-    switch direction {
-    case Direction.Up:
+        if len(line.content) == line.display_len {
+            return attempt_col;
+        }
+
+        prev_col := 1;
+        cur_col := prev_col;
+        bytes_read := 0;
+        for cur_col < attempt_col {
+            prev_col = cur_col;
+            char, rune_len := utf8.decode_rune(line.content[bytes_read:]);
+            bytes_read += rune_len;
+
+            if char == '\t' {
+                cur_col += tab_width;
+            } else if char < 128 {
+                cur_col += ascii_display_len(char);
+            } else {
+                cur_col += 1;
+            }
+        }
+        // Last char isn't a multichar, no reason to backtrack
+        if cur_col == prev_col + 1 {
+            return cur_col;
+        }
+
+        if cur_col >= line.display_len {
+            return prev_col;
+        } else {
+            return cur_col;
+        }
+    }
+
+    #complete switch direction {
+    case .Up:
         cursor.y = max(1, cursor.y - 1);
 
-        line_len := text_line_display_len(text, cursor.y);
+        line := text.lines[cursor.y - 1];
+        line_len := line.display_len;
         max_x := line_len == 0 ? 1 : line_len;
-        cursor.x = min(max_x, cursor.prev_x);
+        cursor.x = x_fix(line, min(max_x, cursor.prev_x), text.tab_width);
 
-    case Direction.Down:
+    case .Down:
         cursor.y = min(buffer.height, len(buffer.text.lines), cursor.y + 1);
 
-        line_len := text_line_display_len(text, cursor.y);
+        line := text.lines[cursor.y - 1];
+        line_len := line.display_len;
         max_x := line_len == 0 ? 1 : line_len;
-        cursor.x = min(max_x, cursor.prev_x);
+        cursor.x = x_fix(line, min(max_x, cursor.prev_x), text.tab_width);
 
-    case Direction.Left:
-        cursor.x = max(1, cursor.x - 1);
+    case .Left:
+        line := text.lines[cursor.y - 1];
+        if len(line.content) == line.display_len {
+            cursor.x = max(1, cursor.x - 1);
+        } else {
+            desired_col := max(1, cursor.x - 1);
+            prev_col := 1;
+            cur_col := prev_col;
+            bytes_read := 0;
+            for cur_col <= desired_col {
+                prev_col = cur_col;
+
+                char, rune_len := utf8.decode_rune(line.content[bytes_read:]);
+                bytes_read += rune_len;
+
+                if char == '\t' {
+                    cur_col += text.tab_width;
+                } else if char < 128 {
+                    cur_col += ascii_display_len(char);
+                } else {
+                    cur_col += 1;
+                }
+            }
+            if cur_col == desired_col {
+                cursor.x = cur_col;
+            } else {
+                cursor.x = prev_col;
+            }
+        }
         cursor.prev_x = cursor.x;
 
-    case Direction.Right:
-        line_len := text_line_display_len(text, cursor.y);
+    case .Right:
+        line := text.lines[cursor.y - 1];
+        line_len := line.display_len;
         if line_len == 0 {
             cursor.x = 1;
         } else {
-            cursor.x = min(line_len, cursor.x + 1);
+            cursor.x = x_fix(line, min(line_len, cursor.x + 1), text.tab_width);
         }
         cursor.prev_x = cursor.x;
     }
