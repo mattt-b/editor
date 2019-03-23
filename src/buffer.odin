@@ -119,13 +119,7 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
             char, rune_len := utf8.decode_rune(line.content[bytes_read:]);
             bytes_read += rune_len;
 
-            if char == '\t' {
-                cur_col += tab_width;
-            } else if char < 128 {
-                cur_col += ascii_display_len(char);
-            } else {
-                cur_col += 1;
-            }
+            cur_col += char_display_len(char, tab_width);
         }
         // Last char isn't a multichar, no reason to backtrack
         if cur_col == prev_col + 1 {
@@ -171,13 +165,7 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
                 char, rune_len := utf8.decode_rune(line.content[bytes_read:]);
                 bytes_read += rune_len;
 
-                if char == '\t' {
-                    cur_col += text.tab_width;
-                } else if char < 128 {
-                    cur_col += ascii_display_len(char);
-                } else {
-                    cur_col += 1;
-                }
+                cur_col += char_display_len(char, text.tab_width);
             }
             if cur_col == desired_col {
                 cursor.x = cur_col;

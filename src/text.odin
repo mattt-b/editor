@@ -82,13 +82,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
             }
         }
 
-        if char == '\t' {
-            line_display_len += text.tab_width;
-        } else if char < 128 {
-            line_display_len += ascii_display_len(char);
-        } else {
-            line_display_len += 1;
-        }
+        line_display_len += char_display_len(char, text.tab_width);
         total_bytes_read += rune_len;
     }
 
@@ -128,13 +122,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
             continue;
         }
 
-        if char == '\t' {
-            line_display_len += text.tab_width;
-        } else if char < 128 {
-            line_display_len += ascii_display_len(char);
-        } else {
-            line_display_len += 1;
-        }
+        line_display_len += char_display_len(char, text.tab_width);
         total_bytes_read += rune_len;
     }
 
@@ -156,13 +144,7 @@ text_begin_insert :: proc(text: ^Text, line_num, col: int) {
         for current_col := 1; current_col < col; {
             char, rune_len := utf8.decode_rune(line.content[total_bytes_read:]);
             total_bytes_read += rune_len;
-            if char == '\t' {
-                current_col += text.tab_width;
-            } else if char < 128 {
-                current_col += ascii_display_len(char);
-            } else {
-                current_col += 1;
-            }
+            current_col += char_display_len(char, text.tab_width);
         }
         text.current_change = TextChange{line=line_num, index=total_bytes_read};
     }
@@ -192,12 +174,6 @@ text_insert :: proc(text: ^Text, char: rune) -> bool #require_results {
     copy(line.content[insert_location:], bytes[:count]);
     text.current_change.inserted += count;
 
-    if char == '\t' {
-        line.display_len += text.tab_width;
-    } else if char < 128 {
-        line.display_len += ascii_display_len(char);
-    } else {
-        line.display_len += 1;
-    }
+    line.display_len += char_display_len(char, text.tab_width);
     return true;
 }

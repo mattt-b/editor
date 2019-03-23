@@ -4,15 +4,15 @@ package main
 DISPLAYABLE_ASCII_MIN :: 32;
 DISPLAYABLE_ASCII_MAX :: 126;
 
-ascii_display_len :: inline proc(char: rune) -> int {
-    assert(char < 128);
-    assert(char != 9);
-    assert(char != 10);
-
-    if char > 31 && char < 127 {
-        return 1;
-    } else {
-        return 2;
+char_display_len :: inline proc(char: rune, tab_width: int) -> int {
+    switch {
+    // Normal displayable ascii chars
+    case char > 31 && char < 127: return 1;
+    // utf8 chars assumed to be 1
+    case char > 128: return 1;
+    case char == '\t': return tab_width;
+    // ascii escape codes
+    case: return 2;
     }
 }
 
