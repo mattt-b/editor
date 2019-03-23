@@ -115,6 +115,16 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
             return attempt_col;
         }
 
+        // TODO: This will linearly walk the line and calculate the proper
+        // cursor position so it can only land on the first column of a
+        // multi column character. Could keep track of the difference
+        // between the len(line.content) - line.display_len vs the multi
+        // column chars seen so far and move to an absolute position once
+        // it is known that there are no more multi column chars in the line.
+        // This will probably be the most common case - a single tab - cutting
+        // the linear search off immediately.
+        // This can probably be done in a number of locations where we check
+        // 'if len(line.content) == line.display_len'
         prev_col := 1;
         cur_col := prev_col;
         bytes_read := 0;
