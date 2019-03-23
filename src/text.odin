@@ -130,18 +130,13 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
 }
 
 
-text_line_display_len :: inline proc(text: ^Text, line_num: int) -> int {
-    return text.lines[line_num - 1].display_len;
-}
-
-
 text_begin_insert :: proc(text: ^Text, line_num, col: int) {
-    line := text.lines[line_num - 1];
+    line := text.lines[line_num];
     if len(line.content) == line.display_len {
-        text.current_change = TextChange{line=line_num, index=col-1};
+        text.current_change = TextChange{line=line_num, index=col};
     } else {
         total_bytes_read := 0;
-        for current_col := 1; current_col < col; {
+        for current_col := 0; current_col < col; {
             char, rune_len := utf8.decode_rune(line.content[total_bytes_read:]);
             total_bytes_read += rune_len;
             current_col += char_display_len(char, text.tab_width);
@@ -154,7 +149,7 @@ text_begin_insert :: proc(text: ^Text, line_num, col: int) {
 text_insert :: proc(text: ^Text, char: rune) -> bool #require_results {
     bytes, count := utf8.encode_rune(char);
 
-    line := &text.lines[text.current_change.line - 1];
+    line := &text.lines[text.current_change.line];
 
     // NOTE: This gets a bit into Odin dynamic array implementation details.
     // Since we aren't appending, we miss out on the normal

@@ -1,6 +1,5 @@
 package main
 
-
 import "core:runtime"
 import "core:fmt"
 import "core:log"
