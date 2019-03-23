@@ -77,6 +77,10 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
         buffer_move_cursor(buffer, Direction.Up);
     case event.ch == 'l':
         buffer_move_cursor(buffer, Direction.Right);
+
+    case event.ch == '0':
+        buffer.cursor.x = 1;
+        buffer.cursor.prev_x = 1;
     }
 }
 
