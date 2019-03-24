@@ -63,16 +63,36 @@ buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool #require_results {
 
 
 buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
-    switch {
-    case event.ch != 0:
+    if event.ch != 0 {
         ok := text_insert(buffer.text, event.ch);
         if !ok do unimplemented();
 
-        // TODO: this won't handle cursor movement on multi-chars
+        buffer.cursor.x += char_display_len(event.ch, buffer.text.tab_width);
+        buffer.cursor.prev_x = buffer.cursor.x;
+        return;
+    }
+
+    switch event.key {
+    case tb.Key.SPACE:
+        ok := text_insert(buffer.text, ' ');
+        if !ok do unimplemented();
+
         buffer.cursor.x += 1;
         buffer.cursor.prev_x = buffer.cursor.x;
 
-    case event.key == tb.Key.ESC:
+    case tb.Key.TAB:
+        ok := text_insert(buffer.text, '\t');
+        if !ok do unimplemented();
+
+        buffer.cursor.x += buffer.text.tab_width;
+        buffer.cursor.prev_x = buffer.cursor.x;
+
+    case tb.Key.ENTER: fallthrough;
+    case tb.Key.BACKSPACE: fallthrough;
+    case tb.Key.BACKSPACE2: fallthrough;
+    case tb.Key.DELETE: unimplemented();
+
+    case tb.Key.ESC:
         buffer.mode = BufferMode.Normal;
         buffer.cursor.x = max(0, buffer.cursor.x - 1);
         buffer.cursor.prev_x = buffer.cursor.x;
@@ -80,6 +100,7 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
 }
 
 
+import "core:log"
 buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     switch {
     case event.ch == 'i':
