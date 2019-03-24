@@ -14,11 +14,13 @@ BufferMode :: enum u8 {
 
 Cursor :: struct {
     // TODO:
-    // x is column in a line. It is essential equivalent to
+    // x is column in a line. It is essentially equivalent to
     // where in the 'count' of unicode 'rune's it is on the line.
     // It would be good to change this to directly refer to that,
     // but I need to think more about how to reconcile that with
-    // empty lines and appending to the end of a line.
+    // empty lines (easy) and appending to the end of a line (less easy).
+    // If this could be changed, most places that refer to 'display_len'
+    // wouldn't need to anymore
     x: int,
     line: int,
     // Used when x has to be lowered while moving up and down.
@@ -139,6 +141,8 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
         // the linear search off immediately.
         // This can probably be done in a number of locations where we check
         // 'if len(line.content) == line.display_len'
+        // All of this could be further simplified if cursor space referred
+        // to rune index into a line instead of screen space
         prev_col := 0;
         cur_col := prev_col;
         bytes_read := 0;
