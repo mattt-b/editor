@@ -175,9 +175,11 @@ text_insert :: proc(text: ^Text, char: rune) -> bool #require_results {
 text_delete :: proc(text: ^Text) {
     line := &text.lines[text.current_change.line];
     deletion_index := text.current_change.index + text.current_change.inserted;
-    _, byte_count := utf8.decode_rune(line.content[deletion_index:]);
+    char, byte_count := utf8.decode_rune(line.content[deletion_index:]);
 
     copy(line.content[deletion_index:], line.content[deletion_index+byte_count:]);
     (^mem.Raw_Dynamic_Array)(&line.content).len -= byte_count;
+
+    line.display_len -= char_display_len(char, text.tab_width);
     text.current_change.deleted += 1;
 }
