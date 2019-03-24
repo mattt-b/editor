@@ -89,8 +89,9 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
 
     case tb.Key.ENTER: fallthrough;
     case tb.Key.BACKSPACE: fallthrough;
-    case tb.Key.BACKSPACE2: fallthrough;
-    case tb.Key.DELETE: unimplemented();
+    case tb.Key.BACKSPACE2: unimplemented();
+    case tb.Key.DELETE:
+        text_delete(buffer.text);
 
     case tb.Key.ESC:
         buffer.mode = BufferMode.Normal;
@@ -100,7 +101,6 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
 }
 
 
-import "core:log"
 buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     switch {
     case event.ch == 'i':

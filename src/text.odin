@@ -11,9 +11,7 @@ import "util"
 Text :: struct {
     lines: [dynamic]Line,
 
-    past: [dynamic]TextChange,
     current_change: TextChange,
-    future: [dynamic]TextChange,
 
     line_end_style: LineEndStyle,
     tab_width: int,
@@ -171,4 +169,15 @@ text_insert :: proc(text: ^Text, char: rune) -> bool #require_results {
 
     line.display_len += char_display_len(char, text.tab_width);
     return true;
+}
+
+
+text_delete :: proc(text: ^Text) {
+    line := &text.lines[text.current_change.line];
+    deletion_index := text.current_change.index + text.current_change.inserted;
+    _, byte_count := utf8.decode_rune(line.content[deletion_index:]);
+
+    copy(line.content[deletion_index:], line.content[deletion_index+byte_count:]);
+    (^mem.Raw_Dynamic_Array)(&line.content).len -= byte_count;
+    text.current_change.deleted += 1;
 }
