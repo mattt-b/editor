@@ -21,11 +21,8 @@ Text :: struct {
 Line :: struct {
     content: [dynamic]u8,
 
-    // Number of displayable characters.
-    // For example a utf8 char might take two bytes but only display
-    // as one char, or an escape char might take one byte but display as two.
-    // Tabs will also affect this unless tab_width == 1
-    display_len: int,
+    // Number of utf8 'rune's
+    char_count: int,
 }
 
 
@@ -56,7 +53,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
     // Default to LF if this ends up being a one line file
     text.line_end_style = LineEndStyle.LF;
     total_bytes_read := 0;
-    line_display_len := 0;
+    char_count := 0;
 
     // Figure out line end style and set up first line
     for total_bytes_read < len(file_data) {
@@ -80,7 +77,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
             }
         }
 
-        line_display_len += char_display_len(char, text.tab_width);
+        char_count += 1;
         total_bytes_read += rune_len;
     }
 
@@ -91,7 +88,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
         if total_bytes_read == len(file_data) {
             line_content := make([dynamic]u8, total_bytes_read - line_start);
             mem.copy(&line_content[0], &file_data[line_start], total_bytes_read - line_start);
-            append(&text.lines, Line{content=line_content, display_len=line_display_len});
+            append(&text.lines, Line{content=line_content, char_count=char_count});
             break;
         }
 
@@ -102,9 +99,9 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
             if total_bytes_read - line_start > 0 {
                 mem.copy(&line_content[0], &file_data[line_start], total_bytes_read - line_start);
             }
-            append(&text.lines, Line{content=line_content, display_len=line_display_len});
+            append(&text.lines, Line{content=line_content, char_count=char_count});
 
-            line_display_len = 0;
+            char_count = 0;
 
             total_bytes_read += rune_len;
             line_start = total_bytes_read;
@@ -120,7 +117,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
             continue;
         }
 
-        line_display_len += char_display_len(char, text.tab_width);
+        char_count += 1;
         total_bytes_read += rune_len;
     }
 
@@ -128,16 +125,16 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
 }
 
 
-text_begin_insert :: proc(text: ^Text, line_num, col: int) {
+text_begin_insert :: proc(text: ^Text, line_num, char: int) {
     line := text.lines[line_num];
-    if len(line.content) == line.display_len {
-        text.current_change = TextChange{line=line_num, index=col};
+    if len(line.content) == line.char_count {
+        text.current_change = TextChange{line=line_num, index=char};
     } else {
         total_bytes_read := 0;
-        for current_col := 0; current_col < col; {
-            char, rune_len := utf8.decode_rune(line.content[total_bytes_read:]);
+        for current_char := 0; current_char < char; {
+            _, rune_len := utf8.decode_rune(line.content[total_bytes_read:]);
             total_bytes_read += rune_len;
-            current_col += char_display_len(char, text.tab_width);
+            current_char += 1;
         }
         text.current_change = TextChange{line=line_num, index=total_bytes_read};
     }
@@ -167,7 +164,7 @@ text_insert :: proc(text: ^Text, char: rune) -> bool #require_results {
     copy(line.content[insert_location:], bytes[:count]);
     text.current_change.inserted += count;
 
-    line.display_len += char_display_len(char, text.tab_width);
+    line.char_count += 1;
     return true;
 }
 
@@ -175,11 +172,18 @@ text_insert :: proc(text: ^Text, char: rune) -> bool #require_results {
 text_delete :: proc(text: ^Text) {
     line := &text.lines[text.current_change.line];
     deletion_index := text.current_change.index + text.current_change.inserted;
-    char, byte_count := utf8.decode_rune(line.content[deletion_index:]);
+
+    byte_count: int;
+    if len(line.content) == line.char_count {
+        byte_count = 1;
+    } else {
+        // This is the character being deleted. Need to check if it's a multibyte char
+        _, byte_count = utf8.decode_rune(line.content[deletion_index:]);
+    }
 
     copy(line.content[deletion_index:], line.content[deletion_index+byte_count:]);
     (^mem.Raw_Dynamic_Array)(&line.content).len -= byte_count;
 
-    line.display_len -= char_display_len(char, text.tab_width);
+    line.char_count -= 1;
     text.current_change.deleted += 1;
 }
