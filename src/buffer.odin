@@ -4,6 +4,8 @@ import "core:os"
 
 import tb "shared:termbox"
 
+import "util"
+
 
 BufferMode :: enum u8 {
     Normal,
@@ -92,6 +94,10 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
     case tb.Key.DELETE:
         text_delete(buffer.text);
 
+    case tb.Key.CTRL_S:
+        ok := buffer_save(buffer);
+        if !ok do unimplemented();
+        fallthrough;
     case tb.Key.ESC:
         buffer.mode = BufferMode.Normal;
         buffer.cursor.char = max(0, buffer.cursor.char - 1);
@@ -123,6 +129,10 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     case event.ch == '0':
         buffer.cursor.char = 0;
         buffer.cursor.prev_char = 0;
+
+    case event.key == tb.Key.CTRL_S:
+        ok := buffer_save(buffer);
+        if !ok do unimplemented();
     }
 }
 
@@ -256,4 +266,26 @@ render_buffer :: proc(buffer: ^Buffer) {
     tb.set_cursor(i32(cursor_display_col), i32(buffer.cursor.line - buffer.y_off));
 
     tb.present();
+}
+
+
+buffer_save :: proc(buffer: ^Buffer) -> bool #require_results {
+    // TODO: This needs improvements and won't work on windows
+    file_data: [dynamic]u8;
+    for line in buffer.text.lines {
+        append(&file_data, ..line.content[:]);
+        #complete switch buffer.text.line_end_style {
+            case .LF: append(&file_data, '\n');
+            case .CRLF: append(&file_data, '\r', '\n');
+        }
+    }
+
+    err: os.Errno;
+    _, err = os.seek(buffer.text.fd, 0, os.SEEK_SET);
+    if err != os.ERROR_NONE do return false;
+    err = util.fd_truncate(buffer.text.fd, len(file_data));
+    if err != os.ERROR_NONE do return false;
+    _, err = os.write(buffer.text.fd, file_data[:]);
+    if err != os.ERROR_NONE do return false;
+    return true;
 }

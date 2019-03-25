@@ -41,7 +41,7 @@ main :: proc() {
     context.logger = log.create_file_logger(logger_handle);
     log.info("Editor start");
 
-    fd, err := os.open(os.args[1]);
+    fd, err := os.open(os.args[1], os.O_RDWR);
     if err != 0 {
         fmt.println_err("Error opening file:", os.args[1]);
         exit(1);

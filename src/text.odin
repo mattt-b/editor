@@ -13,6 +13,9 @@ Text :: struct {
 
     line_end_style: LineEndStyle,
     tab_width: int,
+
+
+    fd: os.Handle,
 }
 
 
@@ -54,6 +57,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
     }
     defer(delete(file_data));
 
+    text.fd = fd;
     text.tab_width = 4;
 
     // Default to LF if this ends up being a one line file
