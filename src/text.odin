@@ -5,8 +5,6 @@ import "core:mem"
 import "core:os"
 import "core:unicode/utf8"
 
-import "util"
-
 
 Text :: struct {
     lines: [dynamic]Line,
@@ -43,11 +41,19 @@ LineEndStyle :: enum u8 {
 
 
 text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
-    file_data, err := util.mmap(fd);
+    file_size, err := os.file_size(fd);
     if err != 0 {
         fmt.println_err("Error reading file");
         unimplemented();
     }
+    file_data := make([]u8, file_size);
+    _, err = os.read(fd, file_data);
+    if err != 0 {
+        fmt.println_err("Error reading file");
+        unimplemented();
+    }
+    defer(delete(file_data));
+
     text.tab_width = 4;
 
     // Default to LF if this ends up being a one line file
