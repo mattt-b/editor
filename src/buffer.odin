@@ -120,6 +120,12 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
 
         text_begin_insert(buffer.text, buffer.cursor.line, buffer.cursor.char);
         buffer.mode = BufferMode.Insert;
+    case event.ch == 'A':
+        buffer.cursor.char = buffer.text.lines[buffer.cursor.line].char_count;
+        buffer.cursor.prev_char = buffer.cursor.char;
+
+        text_begin_insert(buffer.text, buffer.cursor.line, buffer.cursor.char);
+        buffer.mode = BufferMode.Insert;
 
     case event.ch == 'h':
         buffer_move_cursor(buffer, Direction.Left);
