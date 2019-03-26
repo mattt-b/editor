@@ -163,7 +163,7 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
         cursor.line = max(0, cursor.line - 1);
 
         line := text.lines[cursor.line];
-        cursor.char = min(cursor.prev_char, line.char_count);
+        cursor.char = line.char_count == 0 ? 0 : min(cursor.prev_char, line.char_count - 1);
 
         if cursor.line < buffer.scroll_off + buffer.y_off {
             buffer.y_off = max(buffer.y_off - 1, 0);
@@ -172,7 +172,7 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
     case .Down:
         cursor.line = min(len(buffer.text.lines) - 1, cursor.line + 1);
         line := text.lines[cursor.line];
-        cursor.char = min(cursor.prev_char, line.char_count);
+        cursor.char = line.char_count == 0 ? 0 : min(cursor.prev_char, line.char_count - 1);
 
         if cursor.line < len(text.lines) - 1 {
             // every line up to the last line, scroll when hitting the offset
@@ -188,7 +188,7 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
 
     case .Right:
         line := text.lines[cursor.line];
-        cursor.char = min(cursor.char + 1, line.char_count - 1);
+        cursor.char = line.char_count == 0 ? 0 : min(cursor.char + 1, line.char_count - 1);
         cursor.prev_char = cursor.char;
     }
 }
