@@ -156,22 +156,30 @@ text_insert :: proc(text: ^Text, char: rune) -> bool #require_results {
 
     line := &text.lines[text.current_change.line];
 
-    // NOTE: This gets a bit into Odin dynamic array implementation details.
-    // Since we aren't appending, we miss out on the normal
-    // growth function for this array. Resize would continually give
-    // the bare minimum growth causing a realloc and memcpy everytime
-    if cap(line.content) < len(line.content) + count {
-        ok := reserve(&line.content, 2 * cap(line.content) + 8);
-        if !ok do return false;
-    }
-    ok := resize(&line.content, len(line.content) + count);
-    if !ok do return false;
-
     insert_location := text.current_change.index + text.current_change.inserted;
-    // Move existing text over
-    copy(line.content[insert_location + count:], line.content[insert_location:]);
-    // Insert char
-    copy(line.content[insert_location:], bytes[:count]);
+    if insert_location < len(line.content) {
+        // NOTE: This gets a bit into Odin dynamic array implementation details.
+        // Since we aren't appending, we miss out on the normal
+        // growth function for this array. Resize would continually give
+        // the bare minimum growth causing a realloc and memcpy everytime
+        if cap(line.content) < len(line.content) + count {
+            ok := reserve(&line.content, 2 * cap(line.content) + 8);
+            if !ok do return false;
+        }
+        ok := resize(&line.content, len(line.content) + count);
+        if !ok do return false;
+
+        // Inserting
+        // Move existing text over
+        copy(line.content[insert_location + count:], line.content[insert_location:]);
+        // Insert char
+        copy(line.content[insert_location:], bytes[:count]);
+    } else if insert_location == len(line.content) || len(line.content) == 0 {
+        // appending at the end of a line
+        append(&line.content, ..bytes[:count]);
+    } else {
+        unimplemented("Can only append directly after a line");
+    }
     text.current_change.inserted += count;
 
     line.char_count += 1;
@@ -183,6 +191,11 @@ text_delete :: proc(text: ^Text) {
     line := &text.lines[text.current_change.line];
     deletion_index := text.current_change.index + text.current_change.inserted;
 
+    if deletion_index == len(line.content) || len(line.content) == 0 {
+        // Deleting the newline
+        unimplemented();
+    }
+
     byte_count: int;
     if len(line.content) == line.char_count {
         byte_count = 1;
@@ -191,7 +204,10 @@ text_delete :: proc(text: ^Text) {
         _, byte_count = utf8.decode_rune(line.content[deletion_index:]);
     }
 
-    copy(line.content[deletion_index:], line.content[deletion_index+byte_count:]);
+    if byte_count < len(line.content) {
+        // Not the last char in the line, shift everything over
+        copy(line.content[deletion_index:], line.content[deletion_index+byte_count:]);
+    }
     (^mem.Raw_Dynamic_Array)(&line.content).len -= byte_count;
 
     line.char_count -= 1;
