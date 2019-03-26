@@ -116,6 +116,8 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
         if buffer.text.lines[buffer.cursor.line].char_count != 0 {
             buffer.cursor.char += 1;
         }
+        buffer.cursor.prev_char = buffer.cursor.char;
+
         text_begin_insert(buffer.text, buffer.cursor.line, buffer.cursor.char);
         buffer.mode = BufferMode.Insert;
 
