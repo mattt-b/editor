@@ -148,7 +148,9 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     case '0':
         buffer.cursor.char = 0;
         buffer.cursor.prev_char = 0;
-
+    case '$':
+        buffer.cursor.char = max(buffer.text.lines[buffer.cursor.line].char_count - 1, 0);
+        buffer.cursor.prev_char = max(int);
     }
 
     switch event.key {
