@@ -204,7 +204,7 @@ text_delete :: proc(text: ^Text) {
         _, byte_count = utf8.decode_rune(line.content[deletion_index:]);
     }
 
-    if byte_count < len(line.content) {
+    if deletion_index + byte_count < len(line.content) {
         // Not the last char in the line, shift everything over
         copy(line.content[deletion_index:], line.content[deletion_index+byte_count:]);
     }
