@@ -107,40 +107,52 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
 
 
 buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
-    switch {
-    case event.ch == 'i':
-        text_begin_insert(buffer.text, buffer.cursor.line, buffer.cursor.char);
+    switch event.ch {
+    case 0: break; // event.ch == 0 when event.key is set instead
+    case 'i':
+        text_begin_change(buffer.text, buffer.cursor.line, buffer.cursor.char);
         buffer.mode = BufferMode.Insert;
 
-    case event.ch == 'a':
+    case 'a':
         if buffer.text.lines[buffer.cursor.line].char_count != 0 {
             buffer.cursor.char += 1;
         }
         buffer.cursor.prev_char = buffer.cursor.char;
 
-        text_begin_insert(buffer.text, buffer.cursor.line, buffer.cursor.char);
+        text_begin_change(buffer.text, buffer.cursor.line, buffer.cursor.char);
         buffer.mode = BufferMode.Insert;
-    case event.ch == 'A':
+    case 'A':
         buffer.cursor.char = buffer.text.lines[buffer.cursor.line].char_count;
         buffer.cursor.prev_char = buffer.cursor.char;
 
-        text_begin_insert(buffer.text, buffer.cursor.line, buffer.cursor.char);
+        text_begin_change(buffer.text, buffer.cursor.line, buffer.cursor.char);
         buffer.mode = BufferMode.Insert;
 
-    case event.ch == 'h':
+    case 'x':
+        text_begin_change(buffer.text, buffer.cursor.line, buffer.cursor.char);
+        text_delete(buffer.text);
+        line := buffer.text.lines[buffer.cursor.line];
+        if buffer.cursor.char >= line.char_count {
+            buffer.cursor.char = max(line.char_count - 1, 0);
+        }
+
+    case 'h':
         buffer_move_cursor(buffer, Direction.Left);
-    case event.ch == 'j':
+    case 'j':
         buffer_move_cursor(buffer, Direction.Down);
-    case event.ch == 'k':
+    case 'k':
         buffer_move_cursor(buffer, Direction.Up);
-    case event.ch == 'l':
+    case 'l':
         buffer_move_cursor(buffer, Direction.Right);
 
-    case event.ch == '0':
+    case '0':
         buffer.cursor.char = 0;
         buffer.cursor.prev_char = 0;
 
-    case event.key == tb.Key.CTRL_S:
+    }
+
+    switch event.key {
+    case tb.Key.CTRL_S:
         ok := buffer_save(buffer);
         if !ok do unimplemented();
     }

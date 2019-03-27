@@ -135,7 +135,7 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
 }
 
 
-text_begin_insert :: proc(text: ^Text, line_num, char: int) {
+text_begin_change :: proc(text: ^Text, line_num, char: int) {
     line := text.lines[line_num];
     if len(line.content) == line.char_count {
         text.current_change = TextChange{line=line_num, index=char};
