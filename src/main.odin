@@ -31,7 +31,7 @@ main :: proc() {
     }
     context.assertion_failure_proc = assertion_failure_proc;
 
-    logger_flags := os.O_WRONLY|os.O_CREATE;
+    logger_flags := os.O_WRONLY|os.O_CREATE|os.O_APPEND;
     logger_mode := os.S_IRUSR|os.S_IWUSR|os.S_IRGRP|os.S_IWGRP|os.S_IROTH;
     logger_handle, log_err := os.open("editor.log", logger_flags, logger_mode);
     if log_err != 0 {
@@ -39,7 +39,7 @@ main :: proc() {
         exit(1);
     }
     context.logger = log.create_file_logger(logger_handle);
-    log.info("Editor start");
+    log.info("\n\n\nEditor start\n\n\n");
 
     fd, err := os.open(os.args[1], os.O_RDWR);
     if err != 0 {
