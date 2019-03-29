@@ -1,4 +1,4 @@
-SRCS := $(wildcard src/*.odin src/**/*.odin)
+SRCS := $(wildcard src/*.odin src/**/*.odin src/**/**/*.odin)
 
 .PHONY: clean bench
 

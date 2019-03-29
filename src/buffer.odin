@@ -65,7 +65,7 @@ buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool #require_results {
 
 buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
     if event.ch != 0 {
-        ok := text_insert(buffer.text, event.ch);
+        ok := text_insert(buffer.text, event.ch, buffer.cursor.line, buffer.cursor.char);
         if !ok do unimplemented();
 
         buffer.cursor.char += 1;
@@ -75,24 +75,48 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
 
     switch event.key {
     case tb.Key.SPACE:
-        ok := text_insert(buffer.text, ' ');
+        ok := text_insert(buffer.text, ' ', buffer.cursor.line, buffer.cursor.char);
         if !ok do unimplemented();
 
         buffer.cursor.char += 1;
         buffer.cursor.prev_char = buffer.cursor.char;
 
     case tb.Key.TAB:
-        ok := text_insert(buffer.text, '\t');
+        ok := text_insert(buffer.text, '\t', buffer.cursor.line, buffer.cursor.char);
         if !ok do unimplemented();
 
         buffer.cursor.char += 1;
         buffer.cursor.prev_char = buffer.cursor.char;
 
-    case tb.Key.ENTER: fallthrough;
+    case tb.Key.ENTER:
+        ok := text_insert_newline(buffer.text, buffer.cursor.line, buffer.cursor.char);
+        if !ok do  unimplemented();
+
+        buffer.cursor.line += 1;
+        buffer.cursor.char = 0;
+        buffer.cursor.prev_char = buffer.cursor.char;
+
     case tb.Key.BACKSPACE: fallthrough;
-    case tb.Key.BACKSPACE2: unimplemented();
+    case tb.Key.BACKSPACE2:
+        line_num := buffer.cursor.line;
+        char := buffer.cursor.char;
+        if line_num == 0 && char == 0 do return;
+
+        if char != 0 {
+            buffer.cursor.char -= 1;
+        } else {
+            assert(line_num != 0);
+            // backspacing newline
+            prev_line := buffer.text.lines[line_num - 1];
+            buffer.cursor.line -= 1;
+            buffer.cursor.char = prev_line.char_count;
+        }
+        buffer.cursor.prev_char = buffer.cursor.char;
+
+        text_backspace(buffer.text, line_num, char);
+
     case tb.Key.DELETE:
-        text_delete(buffer.text);
+        text_delete(buffer.text, buffer.cursor.line, buffer.cursor.char);
 
     case tb.Key.CTRL_S:
         ok := buffer_save(buffer);
@@ -130,7 +154,7 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
 
     case 'x':
         text_begin_change(buffer.text, buffer.cursor.line, buffer.cursor.char);
-        text_delete(buffer.text);
+        text_delete(buffer.text, buffer.cursor.line, buffer.cursor.char);
         line := buffer.text.lines[buffer.cursor.line];
         if buffer.cursor.char >= line.char_count {
             buffer.cursor.char = max(line.char_count - 1, 0);
