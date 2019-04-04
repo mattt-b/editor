@@ -126,6 +126,7 @@ buffer_handle_event_insert :: proc(buffer: ^Buffer, event: tb.Event) {
         buffer.mode = BufferMode.Normal;
         buffer.cursor.char = max(0, buffer.cursor.char - 1);
         buffer.cursor.prev_char = buffer.cursor.char;
+        text_end_change(buffer.text);
     }
 }
 
@@ -155,9 +156,19 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     case 'x':
         text_begin_change(buffer.text, buffer.cursor.line, buffer.cursor.char);
         text_delete(buffer.text, buffer.cursor.line, buffer.cursor.char);
+        text_end_change(buffer.text);
+
         line := buffer.text.lines[buffer.cursor.line];
         if buffer.cursor.char >= line.char_count {
             buffer.cursor.char = max(line.char_count - 1, 0);
+        }
+
+    case 'u':
+        if len(buffer.text.past_changes) > 0 {
+            change := buffer.text.past_changes[len(buffer.text.past_changes) - 1];
+            buffer_move_cursor(buffer, change.cursor_line, change.cursor_char);
+            ok := text_undo(buffer.text);
+            if !ok do unimplemented();
         }
 
     case 'h':
@@ -203,7 +214,7 @@ Direction :: enum u8 {
 }
 
 
-buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
+buffer_move_cursor_direction :: proc(using buffer: ^Buffer, direction: Direction) {
     #complete switch direction {
     case .Up:
         cursor.line = max(0, cursor.line - 1);
@@ -238,6 +249,20 @@ buffer_move_cursor :: proc(using buffer: ^Buffer, direction: Direction) {
         cursor.prev_char = cursor.char;
     }
 }
+
+
+buffer_move_cursor_line_char :: proc(buffer: ^Buffer, line: int, char: int) {
+    destination_is_visible := line >= buffer.y_off && line <= buffer.height + buffer.y_off;
+    if destination_is_visible {
+        buffer.cursor.line = line;
+        buffer.cursor.char = char;
+        buffer.cursor.prev_char = char;
+        return;
+    }
+    unimplemented();
+}
+
+buffer_move_cursor :: proc{buffer_move_cursor_direction, buffer_move_cursor_line_char};
 
 
 render_buffer :: proc(buffer: ^Buffer) {

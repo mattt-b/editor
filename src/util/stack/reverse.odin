@@ -56,6 +56,8 @@ pop_rs :: proc(stack: ^$T/ReverseStack, count: int, allocator := context.temp_al
     assert(stack.len >= count);
 
     result := make([]T.Type, count, allocator);
+    if count == 0 do return result;
+
     mem.copy(&result[0], mem.ptr_offset(stack.data, stack.cap - stack.len), count * size_of(T.Type));
     stack.len -= count;
 
