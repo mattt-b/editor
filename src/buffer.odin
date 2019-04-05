@@ -35,14 +35,14 @@ Cursor :: struct {
 Buffer :: struct {
     width: int,
     height: int,
-    // Lines shifted from the first line to display at the top of the buffer
-    y_off: int,
+
+    top_line: int,
 
     // TODO: Rename this whatever it's called in vim/emacs
     // Number of lines before the top or bottom of the screen to start shifting
-    // y_off.
+    // top_line.
     // In a 50 line file, with a buffer height of 10, and a scroll_off of 2
-    // moving down on line 8 would change the y_off to 1.
+    // moving down on line 8 would change the top_line to 1.
     scroll_off: int,
 
     mode: BufferMode,
@@ -186,12 +186,24 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     case '$':
         buffer.cursor.char = max(buffer.text.lines[buffer.cursor.line].char_count - 1, 0);
         buffer.cursor.prev_char = max(int);
+
+    case 'G':
+        buffer_move_cursor(buffer, len(buffer.text.lines) - 1);
     }
 
     switch event.key {
     case tb.Key.CTRL_S:
         ok := buffer_save(buffer);
         if !ok do unimplemented();
+
+    // TODO: These do not behave the same as Vim. Vim moves the text area by N lines,
+    // this is moving the cursor. Decide which version is preferrable.
+    case tb.Key.CTRL_D:
+        destination := min(buffer.cursor.line + 30, len(buffer.text.lines) - 1);
+        buffer_move_cursor(buffer, destination);
+    case tb.Key.CTRL_U:
+        destination := max(buffer.cursor.line - 30, 0);
+        buffer_move_cursor(buffer, destination);
     }
 }
 
@@ -218,12 +230,11 @@ buffer_move_cursor_direction :: proc(using buffer: ^Buffer, direction: Direction
     #complete switch direction {
     case .Up:
         cursor.line = max(0, cursor.line - 1);
-
         line := text.lines[cursor.line];
         cursor.char = line.char_count == 0 ? 0 : min(cursor.prev_char, line.char_count - 1);
 
-        if cursor.line < buffer.scroll_off + buffer.y_off {
-            buffer.y_off = max(buffer.y_off - 1, 0);
+        if cursor.line < buffer.scroll_off + buffer.top_line {
+            buffer.top_line = max(buffer.top_line - 1, 0);
         }
 
     case .Down:
@@ -233,10 +244,10 @@ buffer_move_cursor_direction :: proc(using buffer: ^Buffer, direction: Direction
 
         if cursor.line < len(text.lines) - 1 {
             // every line up to the last line, scroll when hitting the offset
-            if cursor.line - buffer.y_off > buffer.height - 1 - buffer.scroll_off do buffer.y_off += 1;
+            if cursor.line - buffer.top_line > buffer.height - 1 - buffer.scroll_off do buffer.top_line += 1;
         } else {
             // allow last line to scroll to top of page
-            if buffer.y_off < len(text.lines) - 1 do buffer.y_off += 1;
+            if buffer.top_line < len(text.lines) - 1 do buffer.top_line += 1;
         }
 
     case .Left:
@@ -250,26 +261,40 @@ buffer_move_cursor_direction :: proc(using buffer: ^Buffer, direction: Direction
     }
 }
 
-
 buffer_move_cursor_line_char :: proc(buffer: ^Buffer, line: int, char: int) {
-    destination_is_visible := line >= buffer.y_off && line <= buffer.height + buffer.y_off;
-    if destination_is_visible {
-        buffer.cursor.line = line;
-        buffer.cursor.char = char;
-        buffer.cursor.prev_char = char;
-        return;
+    /* destination_is_visible := line >= buffer.top_line && line <= buffer.height + buffer.top_line; */
+    if line < buffer.top_line {
+        if line < buffer.scroll_off {
+            buffer.top_line = 0;
+        } else {
+            // TODO: need to handle when buffer.height gets too small
+            // (not here, handle during resize events)
+            buffer.top_line = line - buffer.scroll_off;
+        }
+    } else if line > buffer.height + buffer.top_line {
+        buffer.top_line = line - buffer.height + buffer.scroll_off;
     }
-    unimplemented();
+
+    buffer.cursor.line = line;
+    buffer.cursor.char = char;
+    buffer.cursor.prev_char = char;
 }
 
-buffer_move_cursor :: proc{buffer_move_cursor_direction, buffer_move_cursor_line_char};
+buffer_move_cursor_line :: proc(buffer: ^Buffer, line_num: int) {
+    line := buffer.text.lines[line_num];
+    char_num := line.char_count == 0 ? 0 : min(buffer.cursor.prev_char, line.char_count - 1);
+    buffer_move_cursor(buffer, line_num, char_num);
+}
+
+buffer_move_cursor :: proc{buffer_move_cursor_direction, buffer_move_cursor_line_char,
+                          buffer_move_cursor_line};
 
 
 render_buffer :: proc(buffer: ^Buffer) {
     row := 0;
-    for ; row < (len(buffer.text.lines) - buffer.y_off) && row < buffer.height; row += 1 {
+    for ; row < (len(buffer.text.lines) - buffer.top_line) && row < buffer.height; row += 1 {
         col := 0;
-        for char in string(buffer.text.lines[row + buffer.y_off].content[:]) {
+        for char in string(buffer.text.lines[row + buffer.top_line].content[:]) {
             switch {
             case char >= 256:
                 // utf8 char
@@ -336,7 +361,7 @@ render_buffer :: proc(buffer: ^Buffer) {
         cursor_display_col += char_display_len(char, buffer.text.tab_width);
     }
 
-    tb.set_cursor(i32(cursor_display_col), i32(buffer.cursor.line - buffer.y_off));
+    tb.set_cursor(i32(cursor_display_col), i32(buffer.cursor.line - buffer.top_line));
 
     tb.present();
 }
