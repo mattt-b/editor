@@ -13,12 +13,16 @@ Text :: struct {
 
     past_changes: [dynamic]TextChangeSet,
     current_change: TextChangeSet,
+    future_changes: [dynamic]TextChangeSet,
 
     line_end_style: LineEndStyle,
     tab_width: int,
 
     backspaces: ReverseStack(u8),
     deletions: [dynamic]u8,
+    // Text that was inserted and then 'undo'd
+    // These contents will be reinserted on 'redo'
+    reinsertions: [dynamic]u8,
 
     fd: os.Handle,
 }
@@ -167,6 +171,22 @@ index_in_line :: proc(line: Line, char: int) -> int {
 }
 
 
+line_char :: proc(line: Line, index: int) -> int {
+    assert(index <= len(line.content));
+    if len(line.content) == line.char_count do return index;
+    if index <= 1 do return index;
+
+    bytes_read := 0;
+    char := 0;
+    for bytes_read < index {
+        _, byte_count := utf8.decode_rune(line.content[bytes_read:]);
+        bytes_read += byte_count;
+        char += 1;
+    }
+    assert(bytes_read == index);
+    return char;
+}
+
 text_begin_change :: proc(text: ^Text, line_num, char: int) {
     index := index_in_line(text.lines[line_num], char);
     text.current_change = TextChangeSet{line=line_num, index=index,
@@ -183,6 +203,16 @@ text_end_change :: proc(text: ^Text) {
     if !has_change do return;
 
     append(&text.past_changes, change);
+    if len(text.future_changes) != 0 {
+        for change_set in text.future_changes {
+            delete(change_set.backspaced.newlines);
+            delete(change_set.deleted.newlines);
+
+            delete(change_set.inserted.newlines);
+            resize(&text.reinsertions, len(text.reinsertions) - change_set.inserted.len);
+        }
+        clear(&text.future_changes);
+    }
 }
 
 
@@ -336,6 +366,51 @@ text_backspace :: proc(text: ^Text, line_num, char_num: int) {
 }
 
 
+text_backspace_bytes_lines :: proc(text: ^Text, line_num, index: int, byte_count, line_count: int) {
+    line: ^Line;
+    line = &text.lines[line_num];
+
+    for byte_count > 0 || line_count > 0 {
+        assert(index > 0 || line_count > 0);
+
+        if index > 0 {
+            assert(byte_count > 0);
+            remove_count: int;
+            if byte_count >= index {
+                remove_count = index;
+                push_rs(&text.backspaces, ..line.content[0:index]);
+                copy(line.content[0:], line.content[index:]);
+            } else {
+                remove_count = byte_count;
+                push_rs(&text.backspaces, ..line.content[index-remove_count:index]);
+                copy(line.content[index-remove_count:], line.content[index:]);
+            }
+            resize(&line.content, len(line.content) - remove_count);
+            if len(line.content) == line.char_count {
+                line.char_count -= remove_count;
+            } else {
+                // TOOD: faster?
+                line.char_count = utf8.rune_count(line.content[:]);
+            }
+            byte_count -= remove_count;
+            index = 0;
+        }
+
+        if line_count > 0 {
+            assert(index == 0);
+            assert(line_num > 0);
+            line_num -= 1;
+            line = &text.lines[line_num];
+            index = len(line.content);
+
+            text_merge_lines(text, line_num, line_num+1);
+
+            line_count -= 1;
+        }
+    }
+}
+
+
 text_delete :: proc(text: ^Text, line_num, char_num: int) {
     line := &text.lines[line_num];
     deletion_index := index_in_line(line^, char_num);
@@ -387,8 +462,6 @@ line_remove :: proc(line: ^Line, index, byte_count: int, char_count := 0,
 
 
 text_merge_lines :: proc(text: ^Text, first, second: int) {
-    // TODO: handle failure
-    assert(first < len(text.lines) && second < len(text.lines));
     first_line  := &text.lines[first];
     second_line := text.lines[second];
 
@@ -396,6 +469,7 @@ text_merge_lines :: proc(text: ^Text, first, second: int) {
     first_line.char_count += second_line.char_count;
     append(&first_line.content, ..second_line.content[:]);
 
+    // remove Line from text.lines
     if second < len(text.lines) - 1 {
         copy(text.lines[second:], text.lines[second+1:]);
     }
@@ -420,6 +494,7 @@ text_undo :: proc(text: ^Text) -> bool #require_results {
     // TODO: Test if it's faster to do these iteratively as is being done here,
     // or moving all of the bytes first and then handling the newlines
     // Make sure to test with multibyte chars
+    // (for redo, too)
     if change.backspaced.len != 0 || len(change.backspaced.newlines) != 0 {
         has_multibyte = change.backspaced.char_count != change.backspaced.len;
         bytes_remaining := change.backspaced.len;
@@ -466,6 +541,7 @@ text_undo :: proc(text: ^Text) -> bool #require_results {
         newlines_processed := 0;
         num_newlines := len(change.inserted.newlines);
         has_multibyte = change.inserted.char_count != total_bytes;
+        removed: []u8;
 
         for bytes_processed < total_bytes || newlines_processed < num_newlines {
             if newlines_processed < num_newlines {
@@ -479,12 +555,12 @@ text_undo :: proc(text: ^Text) -> bool #require_results {
             }
 
             if byte_count != 0 {
-                // TODO: Need to handle these for re-do
                 if !has_multibyte {
-                    _ = line_remove(line, index, byte_count, byte_count);
+                    removed = line_remove(line, index, byte_count, byte_count);
                 } else {
-                    _ = line_remove(line, index, byte_count);
+                    removed = line_remove(line, index, byte_count);
                 }
+                append(&text.reinsertions, ..removed);
                 bytes_processed += byte_count;
             }
 
@@ -540,5 +616,135 @@ text_undo :: proc(text: ^Text) -> bool #require_results {
         resize(&text.deletions, len(text.deletions) - change.deleted.len);
     }
 
+    append(&text.future_changes, change);
+    return true;
+}
+
+
+text_redo :: proc(text: ^Text) -> bool #require_results {
+    change := pop(&text.future_changes);
+
+    line_num := change.cursor_line;
+    line : ^Line = &text.lines[line_num];
+    index := index_in_line(line^, change.cursor_char);
+
+    if change.deleted.len != 0 || len(change.deleted.newlines) != 0 {
+        bytes_processed := 0;
+        total_bytes := change.deleted.len;
+        byte_count: int;
+        newlines_processed := 0;
+        total_newlines := len(change.deleted.newlines);
+        handle_newline: bool;
+        has_multibyte := change.deleted.len != change.deleted.char_count;
+        removed: []u8;
+
+        for bytes_processed < total_bytes || newlines_processed < total_newlines {
+            if newlines_processed < total_newlines {
+                handle_newline = true;
+                byte_count = change.deleted.newlines[newlines_processed] - bytes_processed;
+                newlines_processed += 1;
+            } else {
+                handle_newline = false;
+                byte_count = total_bytes - bytes_processed;
+            }
+
+            if byte_count != 0 {
+                if !has_multibyte {
+                    removed = line_remove(line, index, byte_count, byte_count);
+                } else {
+                    removed = line_remove(line, index, byte_count);
+                }
+                append(&text.deletions, ..removed);
+                bytes_processed += byte_count;
+            }
+
+            if handle_newline {
+                text_merge_lines(text, line_num, line_num+1);
+            }
+        }
+    }
+
+    if change.inserted.len != 0 || len(change.inserted.newlines) != 0 {
+        bytes_remaining := change.inserted.len;
+        byte_count: int;
+        newlines_remaining := len(change.inserted.newlines);
+        handle_newline: bool;
+        has_multibyte := change.inserted.len != change.inserted.char_count;
+        ok: bool;
+
+        for bytes_remaining > 0 || newlines_remaining > 0 {
+            if newlines_remaining > 0 {
+                byte_count = bytes_remaining - change.inserted.newlines[newlines_remaining - 1];
+                handle_newline = true;
+            } else {
+                handle_newline = false;
+                byte_count = bytes_remaining;
+            }
+
+            if byte_count != 0 {
+                if !has_multibyte {
+                    ok = line_add(line, index, text.reinsertions[len(text.reinsertions)-byte_count:], byte_count);
+                } else {
+                    ok = line_add(line, index, text.reinsertions[len(text.reinsertions)-byte_count:]);
+                }
+                resize(&text.reinsertions, len(text.reinsertions)-byte_count);
+                if !ok do return false;
+
+                bytes_remaining -= byte_count;
+            }
+
+            if handle_newline {
+                ok = text_add_newline(text, line_num, index);
+                if !ok do return false;
+                newlines_remaining -= 1;
+            }
+        }
+    }
+
+    if change.backspaced.len != 0 || len(change.backspaced.newlines) != 0 {
+        byte_count := change.backspaced.len;
+        line_count := len(change.backspaced.newlines);
+
+        for byte_count > 0 || line_count > 0 {
+            assert(index > 0 || line_count > 0);
+
+            if index > 0 {
+                assert(byte_count > 0);
+                remove_count: int;
+                if byte_count >= index {
+                    remove_count = index;
+                    push_rs(&text.backspaces, ..line.content[0:index]);
+                    copy(line.content[0:], line.content[index:]);
+                } else {
+                    remove_count = byte_count;
+                    push_rs(&text.backspaces, ..line.content[index-remove_count:index]);
+                    copy(line.content[index-remove_count:], line.content[index:]);
+                }
+                resize(&line.content, len(line.content) - remove_count);
+                if len(line.content) == line.char_count {
+                    line.char_count -= remove_count;
+                } else {
+                    // TOOD: faster?
+                    line.char_count = utf8.rune_count(line.content[:]);
+                }
+                byte_count -= remove_count;
+                index = 0;
+            }
+
+            if line_count > 0 {
+                assert(index == 0);
+                assert(line_num > 0);
+                line_num -= 1;
+                line = &text.lines[line_num];
+                index = len(line.content);
+
+                text_merge_lines(text, line_num, line_num+1);
+
+                line_count -= 1;
+            }
+        }
+    }
+
+    append(&text.past_changes, change);
     return true;
 }

@@ -192,19 +192,29 @@ buffer_handle_event_normal :: proc(buffer: ^Buffer, event: tb.Event) {
     }
 
     switch event.key {
-    case tb.Key.CTRL_S:
+    case .CTRL_S:
         ok := buffer_save(buffer);
         if !ok do unimplemented();
 
     // TODO: These do not behave the same as Vim. Vim moves the text area by N lines,
     // this is moving the cursor. Decide which version is preferrable.
-    case tb.Key.CTRL_D:
+    case .CTRL_D:
         destination := min(buffer.cursor.line + 30, len(buffer.text.lines) - 1);
         buffer_move_cursor(buffer, destination);
-    case tb.Key.CTRL_U:
+    case .CTRL_U:
         destination := max(buffer.cursor.line - 30, 0);
         buffer_move_cursor(buffer, destination);
+
+    case .CTRL_R:
+        if len(buffer.text.future_changes) > 0 {
+            change := buffer.text.future_changes[len(buffer.text.future_changes) - 1];
+            char := line_char(buffer.text.lines[change.line], change.index);
+            buffer_move_cursor(buffer, change.line, char);
+            ok := text_redo(buffer.text);
+            if !ok do unimplemented();
+        }
     }
+
 }
 
 
