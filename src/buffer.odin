@@ -14,20 +14,12 @@ BufferMode :: enum u8 {
 
 
 Cursor :: struct {
-    // TODO:
-    // x is column in a line. It is essentially equivalent to
-    // where in the 'count' of unicode 'rune's it is on the line.
-    // It would be good to change this to directly refer to that,
-    // but I need to think more about how to reconcile that with
-    // empty lines (easy) and appending to the end of a line (less easy).
-    // If this could be changed, most places that refer to 'display_len'
-    // wouldn't need to anymore
     char: int,
     line: int,
-    // Used when x has to be lowered while moving up and down.
-    // Example: line=1 has 10 chars and x is 8. line=2 has 3 chars.
-    // When moving from line=1 to line=2, the x will be set to 2.
-    // When moving back to line=1 this is used to set x back to 7.
+    // Used when char has to be lowered while moving up and down.
+    // Example: line=1 has 10 chars and char is 8. line=2 has 3 chars.
+    // When moving from line=1 to line=2, the char will be set to 2.
+    // When moving back to line=1 this is used to set char back to 7.
     prev_char: int,
 }
 
