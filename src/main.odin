@@ -48,7 +48,7 @@ main :: proc() {
     }
 
     buffer := new(Buffer);
-    ok := buffer_init(buffer, fd);
+    ok := buffer_init_from_file(buffer, fd);
     if !ok do unimplemented();
 
     tb_error := tb.init();

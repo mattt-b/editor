@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:os"
 
 import tb "shared:termbox"
@@ -43,14 +44,29 @@ Buffer :: struct {
 }
 
 
-buffer_init :: proc(buf: ^Buffer, fd: os.Handle) -> bool #require_results {
-    buf.mode = BufferMode.Normal;
+buffer_init_from_file :: proc(using buf: ^Buffer, fd: os.Handle) -> bool #require_results {
+    buf.mode = .Normal;
     buf.scroll_off = 5;
 
-    buf.text = new(Text);
+    text = new(Text);
     if buf.text == nil do return false;
-    ok := text_init(buf.text, fd);
+
+    file_size, err := os.file_size(fd);
+    if err != 0 {
+        fmt.println_err("Error reading file");
+        unimplemented();
+    }
+    file_data := make([]u8, file_size);
+    _, err = os.read(fd, file_data);
+    if err != 0 {
+        fmt.println_err("Error reading file");
+        unimplemented();
+    }
+    defer(delete(file_data));
+
+    ok := text_init(buf.text, file_data, fd);
     if !ok do unimplemented();
+
     return true;
 }
 
@@ -371,7 +387,12 @@ render_buffer :: proc(buffer: ^Buffer) {
 
 buffer_save :: proc(buffer: ^Buffer) -> bool #require_results {
     // TODO: This needs improvements and won't work on windows
+
+    if buffer.text.fd == os.INVALID_HANDLE do unimplemented();
+
     file_data: [dynamic]u8;
+    defer(delete(file_data));
+
     for line in buffer.text.lines {
         append(&file_data, ..line.content[:]);
         #complete switch buffer.text.line_end_style {

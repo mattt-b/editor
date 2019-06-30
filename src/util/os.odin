@@ -6,7 +6,7 @@ foreign import libc "system:c"
 
 
 foreign libc {
-    @(link_name="ftruncate") _unix_ftruncate:: proc(fd: os.Handle, length: int) -> int ---;
+    @(link_name="ftruncate") _unix_ftruncate :: proc(fd: os.Handle, length: int) -> int ---;
 }
 
 

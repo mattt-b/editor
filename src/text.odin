@@ -1,6 +1,5 @@
 package main
 
-import "core:fmt"
 import "core:mem"
 import "core:os"
 import "core:unicode/utf8"
@@ -66,20 +65,7 @@ LineEndStyle :: enum u8 {
 }
 
 
-text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
-    file_size, err := os.file_size(fd);
-    if err != 0 {
-        fmt.println_err("Error reading file");
-        unimplemented();
-    }
-    file_data := make([]u8, file_size);
-    _, err = os.read(fd, file_data);
-    if err != 0 {
-        fmt.println_err("Error reading file");
-        unimplemented();
-    }
-    defer(delete(file_data));
-
+text_init :: proc(text: ^Text, data: []u8, fd: os.Handle = os.INVALID_HANDLE) -> bool #require_results {
     text.fd = fd;
     text.tab_width = 4;
 
@@ -89,19 +75,19 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
     char_count := 0;
 
     // Figure out line end style and set up first line
-    for total_bytes_read < len(file_data) {
-        char, rune_len := utf8.decode_rune(file_data[total_bytes_read:]);
+    for total_bytes_read < len(data) {
+        char, rune_len := utf8.decode_rune(data[total_bytes_read:]);
 
         if char == '\n' {
             text.line_end_style = LineEndStyle.LF;
             break;
         }
         if char == '\r' {
-            if len(file_data) == total_bytes_read + 1 {
+            if len(data) == total_bytes_read + 1 {
                 unimplemented("Not handling bare CR");
             }
 
-            next_char, _ := utf8.decode_rune(file_data[total_bytes_read+1:]);
+            next_char, _ := utf8.decode_rune(data[total_bytes_read+1:]);
             if next_char == '\n' {
                 text.line_end_style = LineEndStyle.CRLF;
                 break;
@@ -118,19 +104,19 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
     line_start := 0;
     for {
         // Handle the case that the file does not end on a newline
-        if total_bytes_read == len(file_data) {
+        if total_bytes_read == len(data) {
             line_content := make([dynamic]u8, total_bytes_read - line_start);
-            mem.copy(&line_content[0], &file_data[line_start], total_bytes_read - line_start);
+            mem.copy(&line_content[0], &data[line_start], total_bytes_read - line_start);
             append(&text.lines, Line{content=line_content, char_count=char_count});
             break;
         }
 
-        char, rune_len := utf8.decode_rune(file_data[total_bytes_read:]);
+        char, rune_len := utf8.decode_rune(data[total_bytes_read:]);
 
         if char == rune(text.line_end_style) {
             line_content := make([dynamic]u8, total_bytes_read - line_start);
             if total_bytes_read - line_start > 0 {
-                mem.copy(&line_content[0], &file_data[line_start], total_bytes_read - line_start);
+                mem.copy(&line_content[0], &data[line_start], total_bytes_read - line_start);
             }
             append(&text.lines, Line{content=line_content, char_count=char_count});
 
@@ -142,11 +128,11 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
             #complete switch text.line_end_style {
                 case .LF:
                 case .CRLF:
-                char, rune_len = utf8.decode_rune(file_data[total_bytes_read:]);
+                char, rune_len = utf8.decode_rune(data[total_bytes_read:]);
                 assert(char == '\n', "Bare \r not currently supported");
                 total_bytes_read += rune_len;
             }
-            if total_bytes_read == len(file_data) do break;
+            if total_bytes_read == len(data) do break;
             continue;
         }
 
@@ -155,6 +141,36 @@ text_init :: proc(text: ^Text, fd: os.Handle) -> bool #require_results {
     }
 
     return true;
+}
+
+
+delete_text :: proc(text: ^Text) {
+    for line in text.lines {
+        delete(line.content);
+    }
+    delete(text.lines);
+
+    for change in text.past_changes {
+        delete(change.backspaced.newlines);
+        delete(change.inserted.newlines);
+        delete(change.deleted.newlines);
+    }
+    delete(text.past_changes);
+
+    delete(text.current_change.backspaced.newlines);
+    delete(text.current_change.inserted.newlines);
+    delete(text.current_change.deleted.newlines);
+
+    for change in text.future_changes {
+        delete(change.backspaced.newlines);
+        delete(change.inserted.newlines);
+        delete(change.deleted.newlines);
+    }
+    delete(text.future_changes);
+
+    free(text.backspaces.data);
+    delete(text.deletions);
+    delete(text.reinsertions);
 }
 
 
