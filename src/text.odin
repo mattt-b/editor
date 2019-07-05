@@ -83,17 +83,14 @@ text_init :: proc(text: ^Text, data: []u8, fd: os.Handle = os.INVALID_HANDLE) ->
             break;
         }
         if char == '\r' {
-            if len(data) == total_bytes_read + 1 {
-                unimplemented("Not handling bare CR");
+            if len(data) > total_bytes_read + 1 {
+                next_char, _ := utf8.decode_rune(data[total_bytes_read+1:]);
+                if next_char == '\n' {
+                    text.line_end_style = LineEndStyle.CRLF;
+                    break;
+                }
             }
 
-            next_char, _ := utf8.decode_rune(data[total_bytes_read+1:]);
-            if next_char == '\n' {
-                text.line_end_style = LineEndStyle.CRLF;
-                break;
-            } else {
-                unimplemented("Not handling bare CR");
-            }
         }
 
         char_count += 1;
@@ -108,31 +105,37 @@ text_init :: proc(text: ^Text, data: []u8, fd: os.Handle = os.INVALID_HANDLE) ->
             line_content := make([dynamic]u8, total_bytes_read - line_start);
             mem.copy(&line_content[0], &data[line_start], total_bytes_read - line_start);
             append(&text.lines, Line{content=line_content, char_count=char_count});
-            break;
+            return true;
         }
 
         char, rune_len := utf8.decode_rune(data[total_bytes_read:]);
 
-        if char == rune(text.line_end_style) {
+        line_end: if char == rune(text.line_end_style) {
+            if text.line_end_style == .CRLF {
+                // Look ahead one spot on CR to see if it's a CRLF
+                second_rune_len: int;
+                char, second_rune_len = utf8.decode_rune(data[total_bytes_read+rune_len:]);
+
+                if char != '\n' do break line_end;
+            }
+
             line_content := make([dynamic]u8, total_bytes_read - line_start);
             if total_bytes_read - line_start > 0 {
                 mem.copy(&line_content[0], &data[line_start], total_bytes_read - line_start);
             }
             append(&text.lines, Line{content=line_content, char_count=char_count});
 
-            char_count = 0;
-
-            total_bytes_read += rune_len;
-            line_start = total_bytes_read;
-
             #complete switch text.line_end_style {
                 case .LF:
+                    total_bytes_read += 1;
                 case .CRLF:
-                char, rune_len = utf8.decode_rune(data[total_bytes_read:]);
-                assert(char == '\n', "Bare \r not currently supported");
-                total_bytes_read += rune_len;
+                    total_bytes_read += 2;
             }
-            if total_bytes_read == len(data) do break;
+            if total_bytes_read == len(data) do return true;
+
+            line_start = total_bytes_read;
+            char_count = 0;
+
             continue;
         }
 
@@ -140,6 +143,7 @@ text_init :: proc(text: ^Text, data: []u8, fd: os.Handle = os.INVALID_HANDLE) ->
         total_bytes_read += rune_len;
     }
 
+    unreachable();
     return true;
 }
 
